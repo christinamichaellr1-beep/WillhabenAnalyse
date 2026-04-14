@@ -139,7 +139,12 @@ def _detect_sold_out(text: str) -> str:
 async def _fetch_page_text(page, url: str) -> str | None:
     """Lädt eine URL und gibt den Seitentext zurück."""
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        # "commit" statt "domcontentloaded": verhindert Redirect-Interrupt-Fehler
+        # wenn Seiten auf externe URLs weiterleiten (eventim.at → myticket.de etc.)
+        response = await page.goto(url, wait_until="commit", timeout=25000)
+        if response and response.status >= 400:
+            logger.warning("HTTP %d: %s", response.status, url)
+            return None
         await page.wait_for_timeout(1500)
         return await page.evaluate("document.body ? document.body.innerText : ''")
     except PlaywrightTimeoutError:
