@@ -60,8 +60,8 @@ def _extract_id_from_url(url: str) -> str | None:
 
 
 def _is_first_run() -> bool:
-    """True wenn raw_cache leer ist (noch keine Anzeigen gecacht wurden)."""
-    return not any(RAW_CACHE.glob("*.json"))
+    """True wenn raw_cache leer oder sehr wenig Dateien (< 10) vorhanden sind."""
+    return sum(1 for _ in RAW_CACHE.glob("*.json")) < 10
 
 
 def _parse_willhaben_date(text_komplett: str, scripts: list[str]) -> datetime.date | None:
@@ -323,38 +323,49 @@ async def scrape(
     max_pages: int = MAX_LIST_PAGES,
     headless: bool = True,
     max_age_days: int | None = None,
+    max_ads: int | None = None,
 ) -> list[dict]:
     """
     Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen.
 
-    max_age_days: Maximales Alter einer Anzeige in Tagen. Sobald eine Anzeige
-                  älter ist, wird der Scraping-Lauf gestoppt (da nach Datum
-                  sortiert sind alle folgenden noch älter).
-                  None = Wert aus config.json oder Auto-Detect (3 beim ersten
-                  Lauf, 1 bei Folgeläufen).
+    max_age_days: Maximales Alter einer Anzeige in Tagen. Anzeigen die älter
+                  sind werden übersprungen (nicht gestoppt – sort=5 ist nicht
+                  perfekt sortiert).
+                  None = Wert aus config.json oder Auto-Detect.
+
+    max_ads: Maximale Anzahl zu speichernder Anzeigen. None = unbegrenzt.
+             Beim ersten Lauf automatisch auf first_run_max_ads (200) gesetzt.
 
     Bereits gecachte Anzeigen (raw_cache/{id}.json existiert) werden
     übersprungen und nicht erneut besucht.
     """
-    # Auto-detect max_age_days wenn nicht explizit angegeben
+    first_run = _is_first_run()
+
+    # Auto-detect max_age_days und max_ads wenn nicht explizit angegeben
+    config_path = BASE_DIR / "config.json"
+    cfg: dict = {}
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
     if max_age_days is None:
-        config_path = BASE_DIR / "config.json"
-        try:
-            cfg = json.loads(config_path.read_text(encoding="utf-8"))
-            if _is_first_run():
-                max_age_days = cfg.get("first_run_max_age_days", 3)
-                _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
-            else:
-                max_age_days = cfg.get("max_age_days", 1)
-        except Exception:
-            max_age_days = 3 if _is_first_run() else 1
+        if first_run:
+            max_age_days = cfg.get("first_run_max_age_days", 3)
+            _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
+        else:
+            max_age_days = cfg.get("max_age_days", 1)
+
+    if max_ads is None and first_run:
+        max_ads = cfg.get("first_run_max_ads", 200)
+        _log(f"Erster Lauf → max_ads={max_ads}")
 
     cutoff_date = datetime.date.today() - datetime.timedelta(days=max_age_days)
     _log(f"Scraping neue Anzeigen (max_age_days={max_age_days}, cutoff={cutoff_date})")
 
     results: list[dict] = []
     seen_urls: set[str] = set()
-    stop_scraping = False
+    skipped_old = 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
@@ -402,13 +413,14 @@ async def scrape(
 
             # ---- Detailseiten ----
             for idx, ad_url in enumerate(all_ad_urls, 1):
-                if stop_scraping:
+                # max_ads-Limit erreicht → fertig
+                if max_ads and len(results) >= max_ads:
+                    _log(f"max_ads={max_ads} erreicht → stoppe.")
                     break
 
                 ad_id = _extract_id_from_url(ad_url) or ad_url
 
-                # Bereits gecacht → überspringen (zählt nicht für Alters-Check,
-                # da es sich um bereits verarbeitete Anzeigen handelt)
+                # Bereits gecacht → überspringen
                 cached = _load_raw_cache(ad_id)
                 if cached:
                     _log(f"  ({idx}/{len(all_ad_urls)}) Cache-Hit: {ad_id}")
@@ -423,15 +435,16 @@ async def scrape(
                         await page.wait_for_timeout(1200)
                         ad = await _parse_detail_page(page, ad_url)
 
-                        # Alters-Check: Anzeige zu alt → Lauf stoppen
+                        # Alters-Check: zu alt → überspringen, NICHT stoppen
+                        # (sort=5 ist nicht perfekt sortiert, alte Ads können früh erscheinen)
                         if ad.get("eingestellt_am"):
                             ad_date = datetime.date.fromisoformat(ad["eingestellt_am"])
                             if ad_date < cutoff_date:
+                                skipped_old += 1
                                 _log(
                                     f"  ({idx}) Anzeige {ad_id} vom {ad_date} "
-                                    f"ist älter als cutoff {cutoff_date} → stoppe."
+                                    f"zu alt (cutoff {cutoff_date}) → übersprungen."
                                 )
-                                stop_scraping = True
                                 ok = True
                                 break
 
@@ -443,30 +456,19 @@ async def scrape(
                         _log(f"  Fehler Detailseite Versuch {attempt}/2: {exc}")
 
                 if not ok:
-                    results.append({
-                        "id": ad_id,
-                        "link": ad_url,
-                        "titel": "",
-                        "preis_roh": "",
-                        "text_komplett": "FEHLER: Seite nicht ladbar",
-                        "verkäufertyp": "unbekannt",
-                        "verkäufer_id": "",
-                        "verkäufername": "",
-                        "mitglied_seit": "",
-                        "eingestellt_am": "",
-                        "scraped_at": datetime.datetime.now().isoformat(),
-                    })
+                    _log(f"  ({idx}) Anzeige {ad_id} nicht ladbar → übersprungen.")
 
-                if not stop_scraping:
-                    await page.wait_for_timeout(600)
+                await page.wait_for_timeout(600)
 
         except Exception as exc:
             _log(f"FATALER FEHLER: {exc}")
         finally:
             await browser.close()
 
-    skipped = len(all_ad_urls) - len(results)
-    _log(f"Scraping abgeschlossen. {len(results)} Anzeigen verarbeitet, {skipped} übersprungen.")
+    _log(
+        f"Scraping abgeschlossen. {len(results)} Anzeigen gespeichert, "
+        f"{skipped_old} zu alt übersprungen, {len(all_ad_urls)} Links gesamt."
+    )
     return results
 
 
