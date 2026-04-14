@@ -6,7 +6,8 @@ Gibt pro Anzeige ein vollständiges Dict zurück + speichert Rohtext in raw_cach
 
 Rückgabe-Dict pro Anzeige:
   id, link, titel, preis_roh, text_komplett,
-  verkäufer_id, verkäufername, verkäufertyp, mitglied_seit, scraped_at
+  verkäufer_id, verkäufername, verkäufertyp, mitglied_seit, scraped_at,
+  eingestellt_am
 """
 import asyncio
 import json
@@ -24,7 +25,7 @@ RAW_CACHE.mkdir(parents=True, exist_ok=True)
 TARGET_URL = (
     "https://www.willhaben.at/iad/kaufen-und-verkaufen/marktplatz/"
     "tickets-gutscheine/konzerte-musikfestivals-6702"
-    "?rows=90&isNavigation=true&areaId=900"
+    "?rows=90&isNavigation=true&areaId=900&sort=5"
 )
 MAX_LIST_PAGES = 5
 USER_AGENT = (
@@ -56,6 +57,59 @@ def _extract_id_from_url(url: str) -> str | None:
     """Letzte numerische Sequenz in der URL als Willhaben-ID."""
     m = re.search(r"-(\d+)/?$", url)
     return m.group(1) if m else None
+
+
+def _is_first_run() -> bool:
+    """True wenn raw_cache leer ist (noch keine Anzeigen gecacht wurden)."""
+    return not any(RAW_CACHE.glob("*.json"))
+
+
+def _parse_willhaben_date(text_komplett: str, scripts: list[str]) -> datetime.date | None:
+    """
+    Parst das Einstelldatum aus dem Volltext oder JSON-LD einer Willhaben-Anzeige.
+    Unterstützt: ISO-Datum (JSON-LD), 'Heute', 'Gestern', 'vor X Tagen', 'DD.MM.YYYY'.
+    """
+    today = datetime.date.today()
+
+    # JSON-LD datePosted (zuverlässigste Methode, ISO-Format)
+    for raw in scripts:
+        try:
+            payload = json.loads(raw or "")
+        except Exception:
+            continue
+        items = payload if isinstance(payload, list) else [payload]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            date_str = item.get("datePosted") or item.get("dateCreated") or item.get("datePublished")
+            if date_str:
+                try:
+                    return datetime.date.fromisoformat(str(date_str)[:10])
+                except ValueError:
+                    pass
+
+    # "Heute" → today
+    if re.search(r"\bHeute\b", text_komplett, re.IGNORECASE):
+        return today
+
+    # "Gestern" → yesterday
+    if re.search(r"\bGestern\b", text_komplett, re.IGNORECASE):
+        return today - datetime.timedelta(days=1)
+
+    # "vor X Tagen"
+    m = re.search(r"vor\s+(\d+)\s+Tag", text_komplett, re.IGNORECASE)
+    if m:
+        return today - datetime.timedelta(days=int(m.group(1)))
+
+    # "DD.MM.YYYY"
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b", text_komplett)
+    if m:
+        try:
+            return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            pass
+
+    return None
 
 
 async def _dismiss_cookies(page) -> None:
@@ -119,6 +173,15 @@ async def _parse_detail_page(page, url: str) -> dict:
     except Exception:
         pass
 
+    # JSON-LD scripts (für Datum und Verkäuferinfos)
+    scripts = await page.locator("script[type='application/ld+json']").all_text_contents()
+
+    # Einstelldatum
+    eingestellt_am: str = ""
+    parsed_date = _parse_willhaben_date(text_komplett, scripts)
+    if parsed_date:
+        eingestellt_am = parsed_date.isoformat()
+
     # Titel
     titel = ""
     for sel in ["h1", "[data-testid='ad-detail-header'] h1", "h1.sc-item-title"]:
@@ -177,7 +240,6 @@ async def _parse_detail_page(page, url: str) -> dict:
 
     # Fallback: Verkäufer-ID aus JSON-LD
     if not verkäufer_id:
-        scripts = await page.locator("script[type='application/ld+json']").all_text_contents()
         for raw in scripts:
             try:
                 payload = json.loads(raw or "")
@@ -233,6 +295,7 @@ async def _parse_detail_page(page, url: str) -> dict:
         "verkäufer_id": verkäufer_id,
         "verkäufername": verkäufername,
         "mitglied_seit": mitglied_seit,
+        "eingestellt_am": eingestellt_am,
         "scraped_at": datetime.datetime.now().isoformat(),
     }
 
@@ -256,14 +319,42 @@ def _load_raw_cache(ad_id: str) -> dict | None:
 # Main public API
 # ---------------------------------------------------------------------------
 
-async def scrape(max_pages: int = MAX_LIST_PAGES, headless: bool = True) -> list[dict]:
+async def scrape(
+    max_pages: int = MAX_LIST_PAGES,
+    headless: bool = True,
+    max_age_days: int | None = None,
+) -> list[dict]:
     """
-    Scrapet Willhaben Ticket-Marktplatz.
-    Gibt eine Liste von Anzeigen-Dicts zurück.
-    Bereits gecachte Anzeigen werden nicht erneut besucht.
+    Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen.
+
+    max_age_days: Maximales Alter einer Anzeige in Tagen. Sobald eine Anzeige
+                  älter ist, wird der Scraping-Lauf gestoppt (da nach Datum
+                  sortiert sind alle folgenden noch älter).
+                  None = Wert aus config.json oder Auto-Detect (3 beim ersten
+                  Lauf, 1 bei Folgeläufen).
+
+    Bereits gecachte Anzeigen (raw_cache/{id}.json existiert) werden
+    übersprungen und nicht erneut besucht.
     """
+    # Auto-detect max_age_days wenn nicht explizit angegeben
+    if max_age_days is None:
+        config_path = BASE_DIR / "config.json"
+        try:
+            cfg = json.loads(config_path.read_text(encoding="utf-8"))
+            if _is_first_run():
+                max_age_days = cfg.get("first_run_max_age_days", 3)
+                _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
+            else:
+                max_age_days = cfg.get("max_age_days", 1)
+        except Exception:
+            max_age_days = 3 if _is_first_run() else 1
+
+    cutoff_date = datetime.date.today() - datetime.timedelta(days=max_age_days)
+    _log(f"Scraping neue Anzeigen (max_age_days={max_age_days}, cutoff={cutoff_date})")
+
     results: list[dict] = []
     seen_urls: set[str] = set()
+    stop_scraping = False
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
@@ -311,8 +402,13 @@ async def scrape(max_pages: int = MAX_LIST_PAGES, headless: bool = True) -> list
 
             # ---- Detailseiten ----
             for idx, ad_url in enumerate(all_ad_urls, 1):
+                if stop_scraping:
+                    break
+
                 ad_id = _extract_id_from_url(ad_url) or ad_url
 
+                # Bereits gecacht → überspringen (zählt nicht für Alters-Check,
+                # da es sich um bereits verarbeitete Anzeigen handelt)
                 cached = _load_raw_cache(ad_id)
                 if cached:
                     _log(f"  ({idx}/{len(all_ad_urls)}) Cache-Hit: {ad_id}")
@@ -326,6 +422,19 @@ async def scrape(max_pages: int = MAX_LIST_PAGES, headless: bool = True) -> list
                         await page.goto(ad_url, wait_until="domcontentloaded", timeout=60000)
                         await page.wait_for_timeout(1200)
                         ad = await _parse_detail_page(page, ad_url)
+
+                        # Alters-Check: Anzeige zu alt → Lauf stoppen
+                        if ad.get("eingestellt_am"):
+                            ad_date = datetime.date.fromisoformat(ad["eingestellt_am"])
+                            if ad_date < cutoff_date:
+                                _log(
+                                    f"  ({idx}) Anzeige {ad_id} vom {ad_date} "
+                                    f"ist älter als cutoff {cutoff_date} → stoppe."
+                                )
+                                stop_scraping = True
+                                ok = True
+                                break
+
                         _save_raw_cache(ad)
                         results.append(ad)
                         ok = True
@@ -344,17 +453,20 @@ async def scrape(max_pages: int = MAX_LIST_PAGES, headless: bool = True) -> list
                         "verkäufer_id": "",
                         "verkäufername": "",
                         "mitglied_seit": "",
+                        "eingestellt_am": "",
                         "scraped_at": datetime.datetime.now().isoformat(),
                     })
 
-                await page.wait_for_timeout(600)
+                if not stop_scraping:
+                    await page.wait_for_timeout(600)
 
         except Exception as exc:
             _log(f"FATALER FEHLER: {exc}")
         finally:
             await browser.close()
 
-    _log(f"Scraping abgeschlossen. {len(results)} Anzeigen.")
+    skipped = len(all_ad_urls) - len(results)
+    _log(f"Scraping abgeschlossen. {len(results)} Anzeigen verarbeitet, {skipped} übersprungen.")
     return results
 
 

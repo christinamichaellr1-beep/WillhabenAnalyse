@@ -22,6 +22,8 @@
       "ovp_link": ""
     }
   ],
+  "max_age_days": 1,
+  "first_run_max_age_days": 3,
   "export_path": "data/willhaben_markt.xlsx",
   "log_level": "INFO"
 }
