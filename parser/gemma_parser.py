@@ -13,6 +13,7 @@ import json
 import re
 import datetime
 import logging
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -20,6 +21,10 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "gemma4:latest"
 TIMEOUT = 180  # Sekunden
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+PARSE_CACHE_DIR = BASE_DIR / "data" / "parse_cache"
+PARSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
@@ -220,14 +225,54 @@ def parse_ad(ad: dict) -> list[dict]:
     return validated
 
 
-def parse_ads(ads: list[dict]) -> list[dict]:
-    """Verarbeitet eine Liste von Anzeigen-Dicts."""
+def _parse_cache_path(ad_id: str) -> Path:
+    return PARSE_CACHE_DIR / f"{ad_id}.json"
+
+
+def _load_parse_cache(ad_id: str) -> list[dict] | None:
+    path = _parse_cache_path(ad_id)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
+
+
+def _save_parse_cache(ad_id: str, events: list[dict]) -> None:
+    try:
+        _parse_cache_path(ad_id).write_text(
+            json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:
+        logger.warning("Parse-Cache konnte nicht gespeichert werden: %s", exc)
+
+
+def parse_ads(ads: list[dict], use_cache: bool = True) -> list[dict]:
+    """
+    Verarbeitet eine Liste von Anzeigen-Dicts.
+    use_cache=True: bereits geparste Anzeigen (data/parse_cache/{id}.json) werden übersprungen.
+    """
     all_events: list[dict] = []
     total = len(ads)
+    cache_hits = 0
     for i, ad in enumerate(ads, 1):
-        logger.info("Parse %d/%d: %s", i, total, ad.get("id", "?"))
+        ad_id = str(ad.get("id", ""))
+        if use_cache and ad_id:
+            cached = _load_parse_cache(ad_id)
+            if cached is not None:
+                all_events.extend(cached)
+                cache_hits += 1
+                if cache_hits % 50 == 0 or i == total:
+                    logger.info("Parse %d/%d: Cache-Hit (%d cached, %d neu)", i, total, cache_hits, i - cache_hits)
+                continue
+        logger.info("Parse %d/%d: %s (Ollama)", i, total, ad_id or "?")
         events = parse_ad(ad)
+        if use_cache and ad_id:
+            _save_parse_cache(ad_id, events)
         all_events.extend(events)
+    logger.info("Parsing fertig: %d Events, %d Cache-Hits, %d Ollama-Aufrufe",
+                len(all_events), cache_hits, total - cache_hits)
     return all_events
 
 
