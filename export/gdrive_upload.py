@@ -34,6 +34,8 @@ def _find_gdrive_sync_folder() -> Path | None:
     candidates = [
         # Google Drive for Desktop (neu, macOS 12+)
         *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive")),
+        # Deutsch: "Meine Ablage" = "My Drive"
+        *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*/Meine Ablage")),
         *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*")),
         # Ältere Versionen
         Path.home() / "Google Drive",
