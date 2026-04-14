@@ -3,14 +3,18 @@ WillhabenAnalyse GUI – tkinter, 5 Tabs.
 Speichert Einstellungen in config.json.
 """
 import json
+import subprocess
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 import datetime
+import xml.etree.ElementTree as ET
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "config.json"
+PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.willhabenanalyse.pipeline.plist"
+LAUNCHD_LABEL = "com.willhabenanalyse.pipeline"
 
 DEFAULT_CONFIG = {
     "schedule": {
@@ -84,49 +88,204 @@ class App(tk.Tk):
         f = self.tab_schedule
         sched = self.config_data.get("schedule", DEFAULT_CONFIG["schedule"])
 
-        ttk.Label(f, text="Automatischer Zeitplan", font=("", 13, "bold")).grid(
-            row=0, column=0, columnspan=2, pady=(15, 10), padx=15, sticky="w")
+        ttk.Label(f, text="Automatischer Zeitplan (launchd)", font=("", 13, "bold")).grid(
+            row=0, column=0, columnspan=3, pady=(15, 10), padx=15, sticky="w")
 
-        ttk.Label(f, text="Scraping-Intervall (Minuten):").grid(row=1, column=0, sticky="w", padx=15, pady=5)
-        self.scrape_interval = tk.IntVar(value=sched.get("scrape_interval_minutes", 120))
-        ttk.Spinbox(f, from_=15, to=1440, textvariable=self.scrape_interval, width=8).grid(
-            row=1, column=1, sticky="w", padx=5)
+        # Uhrzeit
+        ttk.Label(f, text="Startzeit (HH:MM):").grid(row=1, column=0, sticky="w", padx=15, pady=5)
+        time_frame = ttk.Frame(f)
+        time_frame.grid(row=1, column=1, columnspan=2, sticky="w", padx=5)
+        self.sched_hour = tk.IntVar(value=sched.get("hour", 0))
+        self.sched_minute = tk.IntVar(value=sched.get("minute", 0))
+        ttk.Spinbox(time_frame, from_=0, to=23, textvariable=self.sched_hour, width=4,
+                    format="%02.0f").pack(side="left")
+        ttk.Label(time_frame, text=":").pack(side="left")
+        ttk.Spinbox(time_frame, from_=0, to=59, textvariable=self.sched_minute, width=4,
+                    format="%02.0f").pack(side="left")
 
-        ttk.Label(f, text="OVP-Check-Intervall (Minuten):").grid(row=2, column=0, sticky="w", padx=15, pady=5)
-        self.ovp_interval = tk.IntVar(value=sched.get("ovp_interval_minutes", 60))
-        ttk.Spinbox(f, from_=10, to=720, textvariable=self.ovp_interval, width=8).grid(
-            row=2, column=1, sticky="w", padx=5)
+        # Intervall-Dropdown
+        ttk.Label(f, text="Intervall:").grid(row=2, column=0, sticky="w", padx=15, pady=5)
+        self.sched_interval = tk.StringVar(value=sched.get("interval", "Täglich"))
+        interval_cb = ttk.Combobox(
+            f,
+            textvariable=self.sched_interval,
+            values=["Täglich", "Alle 12h", "Alle 6h", "Manuell"],
+            state="readonly",
+            width=12,
+        )
+        interval_cb.grid(row=2, column=1, sticky="w", padx=5)
 
-        self.schedule_enabled = tk.BooleanVar(value=sched.get("enabled", False))
-        ttk.Checkbutton(f, text="Scheduling aktiv", variable=self.schedule_enabled).grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=15, pady=10)
+        # AN/AUS Checkbox
+        launchd_active = self._launchd_is_loaded()
+        self.launchd_enabled = tk.BooleanVar(value=launchd_active)
+        ttk.Checkbutton(
+            f,
+            text="launchd Service aktiv",
+            variable=self.launchd_enabled,
+            command=self._toggle_launchd,
+        ).grid(row=3, column=0, columnspan=3, sticky="w", padx=15, pady=10)
 
         btn_frame = ttk.Frame(f)
-        btn_frame.grid(row=4, column=0, columnspan=2, sticky="w", padx=15, pady=5)
-        ttk.Button(btn_frame, text="Jetzt scrapen", command=self._run_scrape_now).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Einstellungen speichern", command=self._save_schedule).pack(side="left", padx=5)
+        btn_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=15, pady=5)
+        ttk.Button(btn_frame, text="Einstellungen speichern & neu laden",
+                   command=self._save_schedule).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Jetzt manuell ausführen",
+                   command=self._run_scrape_now).pack(side="left", padx=5)
 
         self.status_label = ttk.Label(f, text="", foreground="green")
-        self.status_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=15)
+        self.status_label.grid(row=5, column=0, columnspan=3, sticky="w", padx=15)
+
+    def _launchd_is_loaded(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["launchctl", "list", LAUNCHD_LABEL],
+                capture_output=True, text=True
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _write_plist(self, hour: int, minute: int, interval: str) -> None:
+        """Schreibt die plist-Datei mit den aktuellen Zeitplan-Einstellungen."""
+        PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        if interval == "Täglich":
+            calendar_entries = [{"Hour": hour, "Minute": minute}]
+        elif interval == "Alle 12h":
+            calendar_entries = [
+                {"Hour": hour, "Minute": minute},
+                {"Hour": (hour + 12) % 24, "Minute": minute},
+            ]
+        elif interval == "Alle 6h":
+            calendar_entries = [
+                {"Hour": (hour + i * 6) % 24, "Minute": minute}
+                for i in range(4)
+            ]
+        else:
+            # Manuell: kein automatischer Zeitplan (kein StartCalendarInterval)
+            calendar_entries = []
+
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'
+            ' "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+            '<plist version="1.0">',
+            '<dict>',
+            '    <key>Label</key>',
+            f'    <string>{LAUNCHD_LABEL}</string>',
+            '    <key>ProgramArguments</key>',
+            '    <array>',
+            '        <string>/opt/homebrew/bin/python3</string>',
+            '        <string>/Users/Boti/WillhabenAnalyse/main.py</string>',
+            '        <string>--once</string>',
+            '    </array>',
+            '    <key>WorkingDirectory</key>',
+            '    <string>/Users/Boti/WillhabenAnalyse</string>',
+        ]
+
+        if calendar_entries:
+            if len(calendar_entries) == 1:
+                e = calendar_entries[0]
+                lines += [
+                    '    <key>StartCalendarInterval</key>',
+                    '    <dict>',
+                    '        <key>Hour</key>',
+                    f'        <integer>{e["Hour"]}</integer>',
+                    '        <key>Minute</key>',
+                    f'        <integer>{e["Minute"]}</integer>',
+                    '    </dict>',
+                ]
+            else:
+                lines += ['    <key>StartCalendarInterval</key>', '    <array>']
+                for e in calendar_entries:
+                    lines += [
+                        '        <dict>',
+                        '            <key>Hour</key>',
+                        f'            <integer>{e["Hour"]}</integer>',
+                        '            <key>Minute</key>',
+                        f'            <integer>{e["Minute"]}</integer>',
+                        '        </dict>',
+                    ]
+                lines.append('    </array>')
+
+        lines += [
+            '    <key>StandardOutPath</key>',
+            '    <string>/Users/Boti/WillhabenAnalyse/logs/launchd_stdout.log</string>',
+            '    <key>StandardErrorPath</key>',
+            '    <string>/Users/Boti/WillhabenAnalyse/logs/launchd_stderr.log</string>',
+            '    <key>EnvironmentVariables</key>',
+            '    <dict>',
+            '        <key>PATH</key>',
+            '        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>',
+            '        <key>OLLAMA_MODELS</key>',
+            '        <string>/Volumes/MacMiniMich/KI</string>',
+            '    </dict>',
+            '    <key>Disabled</key>',
+            '    <false/>',
+            '</dict>',
+            '</plist>',
+            '',
+        ]
+        PLIST_PATH.write_text("\n".join(lines), encoding="utf-8")
+
+    def _reload_launchd(self) -> None:
+        """Entlädt und lädt den launchd Service neu."""
+        subprocess.run(["launchctl", "unload", str(PLIST_PATH)],
+                       capture_output=True)
+        subprocess.run(["launchctl", "load", str(PLIST_PATH)],
+                       capture_output=True)
+
+    def _toggle_launchd(self) -> None:
+        """Aktiviert oder deaktiviert den launchd Service."""
+        if self.launchd_enabled.get():
+            result = subprocess.run(
+                ["launchctl", "load", str(PLIST_PATH)],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                self.status_label.config(text="launchd Service aktiviert.", foreground="green")
+            else:
+                self.status_label.config(
+                    text=f"Fehler beim Aktivieren: {result.stderr.strip()}", foreground="red")
+                self.launchd_enabled.set(False)
+        else:
+            subprocess.run(["launchctl", "unload", str(PLIST_PATH)], capture_output=True)
+            self.status_label.config(text="launchd Service deaktiviert.", foreground="orange")
 
     def _save_schedule(self):
+        hour = self.sched_hour.get()
+        minute = self.sched_minute.get()
+        interval = self.sched_interval.get()
+
+        self._write_plist(hour, minute, interval)
+
         self.config_data["schedule"] = {
-            "scrape_interval_minutes": self.scrape_interval.get(),
-            "ovp_interval_minutes": self.ovp_interval.get(),
-            "enabled": self.schedule_enabled.get(),
+            "hour": hour,
+            "minute": minute,
+            "interval": interval,
+            "enabled": self.launchd_enabled.get(),
         }
         save_config(self.config_data)
-        self.status_label.config(text="Gespeichert.", foreground="green")
+
+        # Service neu laden wenn aktiv
+        if self.launchd_enabled.get():
+            self._reload_launchd()
+            self.status_label.config(
+                text=f"Gespeichert & neu geladen ({interval}, {hour:02d}:{minute:02d}).",
+                foreground="green"
+            )
+        else:
+            self.status_label.config(text="Gespeichert (Service inaktiv).", foreground="green")
 
     def _run_scrape_now(self):
-        self.status_label.config(text="Starte Pipeline …", foreground="blue")
+        self.status_label.config(text="Starte Pipeline im Hintergrund …", foreground="blue")
         def _run():
             try:
-                import sys
-                sys.path.insert(0, str(BASE_DIR))
-                import main as m
-                m.run_pipeline(log_callback=self._append_log)
-                self.status_label.config(text="Pipeline fertig.", foreground="green")
+                subprocess.Popen(
+                    ["/opt/homebrew/bin/python3", str(BASE_DIR / "main.py"), "--once"],
+                    cwd=str(BASE_DIR),
+                )
+                self.status_label.config(text="Pipeline gestartet (läuft im Hintergrund).", foreground="green")
             except Exception as exc:
                 self.status_label.config(text=f"Fehler: {exc}", foreground="red")
                 self._append_log(f"FEHLER: {exc}")

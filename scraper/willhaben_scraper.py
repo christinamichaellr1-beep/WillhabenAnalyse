@@ -323,6 +323,7 @@ async def scrape(
     max_pages: int = MAX_LIST_PAGES,
     headless: bool = True,
     max_age_days: int | None = None,
+    max_listings: int | None = None,
 ) -> list[dict]:
     """
     Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen.
@@ -333,28 +334,45 @@ async def scrape(
                   None = Wert aus config.json oder Auto-Detect (3 beim ersten
                   Lauf, 1 bei Folgeläufen).
 
+    max_listings: Maximale Anzahl neuer Anzeigen pro Lauf (nicht gecachte).
+                  None = Wert aus config.json.
+
     Bereits gecachte Anzeigen (raw_cache/{id}.json existiert) werden
     übersprungen und nicht erneut besucht.
     """
-    # Auto-detect max_age_days wenn nicht explizit angegeben
+    # Auto-detect Parameter wenn nicht explizit angegeben
+    first_run = _is_first_run()
+    config_path = BASE_DIR / "config.json"
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+
     if max_age_days is None:
-        config_path = BASE_DIR / "config.json"
-        try:
-            cfg = json.loads(config_path.read_text(encoding="utf-8"))
-            if _is_first_run():
-                max_age_days = cfg.get("first_run_max_age_days", 3)
-                _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
-            else:
-                max_age_days = cfg.get("max_age_days", 1)
-        except Exception:
-            max_age_days = 3 if _is_first_run() else 1
+        if first_run:
+            max_age_days = cfg.get("first_run_max_age_days", 3)
+            _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
+        else:
+            max_age_days = cfg.get("max_age_days", 1)
+
+    if max_listings is None:
+        if first_run:
+            max_listings = cfg.get("first_run_max_listings", 200)
+        else:
+            max_listings = cfg.get("max_listings_per_run", 150)
 
     cutoff_date = datetime.date.today() - datetime.timedelta(days=max_age_days)
-    _log(f"Scraping neue Anzeigen (max_age_days={max_age_days}, cutoff={cutoff_date})")
+    _log(
+        f"Scraping neue Anzeigen "
+        f"(max_age_days={max_age_days}, cutoff={cutoff_date}, max_listings={max_listings})"
+    )
 
     results: list[dict] = []
     seen_urls: set[str] = set()
     stop_scraping = False
+    count_new = 0
+    count_skipped_cached = 0
+    count_stopped_old = 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
@@ -405,14 +423,17 @@ async def scrape(
                 if stop_scraping:
                     break
 
+                # max_listings erreicht → stoppen
+                if count_new >= max_listings:
+                    _log(f"  max_listings={max_listings} erreicht → stoppe.")
+                    break
+
                 ad_id = _extract_id_from_url(ad_url) or ad_url
 
-                # Bereits gecacht → überspringen (zählt nicht für Alters-Check,
-                # da es sich um bereits verarbeitete Anzeigen handelt)
+                # Bereits gecacht → überspringen
                 cached = _load_raw_cache(ad_id)
                 if cached:
-                    _log(f"  ({idx}/{len(all_ad_urls)}) Cache-Hit: {ad_id}")
-                    results.append(cached)
+                    count_skipped_cached += 1
                     continue
 
                 _log(f"  ({idx}/{len(all_ad_urls)}) Lade: {ad_url}")
@@ -431,12 +452,14 @@ async def scrape(
                                     f"  ({idx}) Anzeige {ad_id} vom {ad_date} "
                                     f"ist älter als cutoff {cutoff_date} → stoppe."
                                 )
+                                count_stopped_old += 1
                                 stop_scraping = True
                                 ok = True
                                 break
 
                         _save_raw_cache(ad)
                         results.append(ad)
+                        count_new += 1
                         ok = True
                         break
                     except Exception as exc:
@@ -465,8 +488,16 @@ async def scrape(
         finally:
             await browser.close()
 
-    skipped = len(all_ad_urls) - len(results)
-    _log(f"Scraping abgeschlossen. {len(results)} Anzeigen verarbeitet, {skipped} übersprungen.")
+    stop_reason = ""
+    if count_stopped_old:
+        stop_reason = f", {count_stopped_old} gestoppt (zu alt)"
+    elif count_new >= max_listings:
+        stop_reason = f", gestoppt (max_listings={max_listings} erreicht)"
+    _log(
+        f"Scraping: {count_new} neue Anzeigen gefunden, "
+        f"{count_skipped_cached} übersprungen (bereits gecacht)"
+        f"{stop_reason}"
+    )
     return results
 
 

@@ -1,6 +1,8 @@
 {
   "schedule": {
-    "scrape_interval_minutes": 360,
+    "hour": 0,
+    "minute": 0,
+    "interval": "Täglich",
     "enabled": false
   },
   "ovp_search_urls": [
@@ -24,6 +26,8 @@
   ],
   "max_age_days": 1,
   "first_run_max_age_days": 3,
+  "max_listings_per_run": 150,
+  "first_run_max_listings": 200,
   "export_path": "data/willhaben_markt.xlsx",
   "log_level": "INFO"
 }
