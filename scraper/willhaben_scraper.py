@@ -323,6 +323,7 @@ async def scrape(
     max_pages: int = MAX_LIST_PAGES,
     headless: bool = True,
     max_age_days: int | None = None,
+    max_ads: int | None = None,
 ) -> list[dict]:
     """
     Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen.
@@ -333,28 +334,42 @@ async def scrape(
                   None = Wert aus config.json oder Auto-Detect (3 beim ersten
                   Lauf, 1 bei Folgeläufen).
 
+    max_ads: Maximale Anzahl neu gescrapter Anzeigen (Cache-Hits zählen nicht).
+             None = Wert aus config.json oder Auto-Detect (200 beim ersten
+             Lauf, 150 bei Folgeläufen).
+
     Bereits gecachte Anzeigen (raw_cache/{id}.json existiert) werden
     übersprungen und nicht erneut besucht.
     """
-    # Auto-detect max_age_days wenn nicht explizit angegeben
+    first_run = _is_first_run()
+
+    # Auto-detect max_age_days und max_ads wenn nicht explizit angegeben
+    config_path = BASE_DIR / "config.json"
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+
     if max_age_days is None:
-        config_path = BASE_DIR / "config.json"
-        try:
-            cfg = json.loads(config_path.read_text(encoding="utf-8"))
-            if _is_first_run():
-                max_age_days = cfg.get("first_run_max_age_days", 3)
-                _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
-            else:
-                max_age_days = cfg.get("max_age_days", 1)
-        except Exception:
-            max_age_days = 3 if _is_first_run() else 1
+        if first_run:
+            max_age_days = cfg.get("first_run_max_age_days", 3)
+            _log(f"Erster Lauf erkannt → max_age_days={max_age_days}")
+        else:
+            max_age_days = cfg.get("max_age_days", 1)
+
+    if max_ads is None:
+        if first_run:
+            max_ads = cfg.get("first_run_max_ads", 200)
+        else:
+            max_ads = cfg.get("max_ads", 150)
 
     cutoff_date = datetime.date.today() - datetime.timedelta(days=max_age_days)
-    _log(f"Scraping neue Anzeigen (max_age_days={max_age_days}, cutoff={cutoff_date})")
+    _log(f"Scraping neue Anzeigen (max_age_days={max_age_days}, cutoff={cutoff_date}, max_ads={max_ads})")
 
     results: list[dict] = []
     seen_urls: set[str] = set()
     stop_scraping = False
+    new_ads_count = 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
@@ -405,10 +420,13 @@ async def scrape(
                 if stop_scraping:
                     break
 
+                if max_ads is not None and new_ads_count >= max_ads:
+                    _log(f"  max_ads={max_ads} erreicht → stoppe.")
+                    break
+
                 ad_id = _extract_id_from_url(ad_url) or ad_url
 
-                # Bereits gecacht → überspringen (zählt nicht für Alters-Check,
-                # da es sich um bereits verarbeitete Anzeigen handelt)
+                # Bereits gecacht → überspringen (zählt nicht gegen max_ads)
                 cached = _load_raw_cache(ad_id)
                 if cached:
                     _log(f"  ({idx}/{len(all_ad_urls)}) Cache-Hit: {ad_id}")
@@ -437,6 +455,7 @@ async def scrape(
 
                         _save_raw_cache(ad)
                         results.append(ad)
+                        new_ads_count += 1
                         ok = True
                         break
                     except Exception as exc:

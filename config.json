@@ -24,6 +24,8 @@
   ],
   "max_age_days": 1,
   "first_run_max_age_days": 3,
+  "max_ads": 150,
+  "first_run_max_ads": 200,
   "export_path": "data/willhaben_markt.xlsx",
   "log_level": "INFO"
 }

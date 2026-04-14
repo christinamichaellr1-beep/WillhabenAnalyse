@@ -3,11 +3,27 @@ WillhabenAnalyse GUI – tkinter, 5 Tabs.
 Speichert Einstellungen in config.json.
 """
 import json
+import subprocess
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 import datetime
+
+LAUNCHAGENT_LABEL = "com.willhabenanalyse.pipeline"
+LAUNCHAGENT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHAGENT_LABEL}.plist"
+
+
+def _launchagent_is_loaded() -> bool:
+    """True wenn der LaunchAgent aktuell geladen ist."""
+    try:
+        result = subprocess.run(
+            ["launchctl", "list", LAUNCHAGENT_LABEL],
+            capture_output=True, text=True
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "config.json"
@@ -109,6 +125,25 @@ class App(tk.Tk):
         self.status_label = ttk.Label(f, text="", foreground="green")
         self.status_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=15)
 
+        # ---- LaunchAgent AN/AUS ----
+        ttk.Separator(f, orient="horizontal").grid(
+            row=6, column=0, columnspan=2, sticky="ew", padx=15, pady=(15, 8))
+
+        ttk.Label(f, text="Tägliche Ausführung (launchd, 00:00)", font=("", 11, "bold")).grid(
+            row=7, column=0, columnspan=2, sticky="w", padx=15)
+
+        la_btn_frame = ttk.Frame(f)
+        la_btn_frame.grid(row=8, column=0, columnspan=2, sticky="w", padx=15, pady=5)
+        self.la_on_btn = ttk.Button(la_btn_frame, text="AN", width=8, command=self._launchagent_on)
+        self.la_on_btn.pack(side="left", padx=(0, 5))
+        self.la_off_btn = ttk.Button(la_btn_frame, text="AUS", width=8, command=self._launchagent_off)
+        self.la_off_btn.pack(side="left", padx=5)
+
+        self.la_status_label = ttk.Label(f, text="")
+        self.la_status_label.grid(row=9, column=0, columnspan=2, sticky="w", padx=15)
+
+        self._update_launchagent_status()
+
     def _save_schedule(self):
         self.config_data["schedule"] = {
             "scrape_interval_minutes": self.scrape_interval.get(),
@@ -117,6 +152,40 @@ class App(tk.Tk):
         }
         save_config(self.config_data)
         self.status_label.config(text="Gespeichert.", foreground="green")
+
+    def _update_launchagent_status(self):
+        loaded = _launchagent_is_loaded()
+        if loaded:
+            self.la_status_label.config(text="Status: AKTIV (läuft täglich um 00:00)", foreground="green")
+            self.la_on_btn.config(state="disabled")
+            self.la_off_btn.config(state="normal")
+        else:
+            self.la_status_label.config(text="Status: INAKTIV", foreground="gray")
+            self.la_on_btn.config(state="normal")
+            self.la_off_btn.config(state="disabled")
+
+    def _launchagent_on(self):
+        if not LAUNCHAGENT_PLIST.exists():
+            messagebox.showerror("Fehler", f"Plist nicht gefunden:\n{LAUNCHAGENT_PLIST}")
+            return
+        try:
+            subprocess.run(
+                ["launchctl", "load", str(LAUNCHAGENT_PLIST)],
+                check=True, capture_output=True, text=True
+            )
+            self._update_launchagent_status()
+        except subprocess.CalledProcessError as exc:
+            messagebox.showerror("Fehler", f"launchctl load fehlgeschlagen:\n{exc.stderr}")
+
+    def _launchagent_off(self):
+        try:
+            subprocess.run(
+                ["launchctl", "unload", str(LAUNCHAGENT_PLIST)],
+                check=True, capture_output=True, text=True
+            )
+            self._update_launchagent_status()
+        except subprocess.CalledProcessError as exc:
+            messagebox.showerror("Fehler", f"launchctl unload fehlgeschlagen:\n{exc.stderr}")
 
     def _run_scrape_now(self):
         self.status_label.config(text="Starte Pipeline …", foreground="blue")
