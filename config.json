@@ -1,0 +1,20 @@
+{
+  "schedule": {
+    "scrape_interval_minutes": 360,
+    "enabled": false
+  },
+  "ovp_search_urls": [
+    "https://www.oeticket.com/search?q={event}",
+    "https://www.myticket.at/search?q={event}",
+    "https://www.konzerthaus.at/suche?q={event}"
+  ],
+  "watchlist": [
+    {
+      "event_name": "Linkin Park Wien 09.06.2026",
+      "ovp_preis": 89.90,
+      "ovp_link": ""
+    }
+  ],
+  "export_path": "data/willhaben_markt.xlsx",
+  "log_level": "INFO"
+}
