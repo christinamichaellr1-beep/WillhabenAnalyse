@@ -129,6 +129,18 @@ def run_pipeline(log_callback: Callable[[str], None] | None = None) -> dict:
             archived = archive_expired(excel_path)
             if archived:
                 _log(f"Archiv: {archived} abgelaufene Events verschoben.")
+
+            # ---- 4b. Google Drive Upload ----
+            _log("=== SCHRITT 4b: Google Drive Upload ===")
+            try:
+                from export.gdrive_upload import upload_to_gdrive
+                ok = upload_to_gdrive(excel_path)
+                stats["gdrive_upload"] = ok
+                _log(f"Google Drive: {'hochgeladen' if ok else 'nicht verfügbar (siehe Log)'}.")
+            except Exception as exc:
+                logger.warning("Google Drive Upload fehlgeschlagen (nicht kritisch): %s", exc)
+                stats["gdrive_upload"] = False
+
         except Exception as exc:
             logger.exception("Fehler beim Excel-Update")
             stats["errors"].append(f"Excel: {exc}")

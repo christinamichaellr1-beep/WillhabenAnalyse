@@ -5,13 +5,20 @@
   },
   "ovp_search_urls": [
     "https://www.oeticket.com/search?q={event}",
+    "https://www.eventim.at/search?searchterm={event}",
     "https://www.myticket.at/search?q={event}",
-    "https://www.konzerthaus.at/suche?q={event}"
+    "https://www.barracuda.at/?s={event}",
+    "https://www.wien-ticket.at/suche?q={event}",
+    "https://www.konzerthaus.at/suche?q={event}",
+    "https://www.stadthalle.com/de/programm?q={event}",
+    "https://www.szene-wien.com/?s={event}",
+    "https://gasometer.at/?s={event}",
+    "https://www.ticketmaster.at/search?q={event}"
   ],
   "watchlist": [
     {
       "event_name": "Linkin Park Wien 09.06.2026",
-      "ovp_preis": 89.90,
+      "ovp_preis": 89.9,
       "ovp_link": ""
     }
   ],
