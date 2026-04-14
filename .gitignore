@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+data/raw_cache/
+data/ovp_cache.json
+data/*.xlsx
+logs/
+*.log
+.env
+config_local.json
