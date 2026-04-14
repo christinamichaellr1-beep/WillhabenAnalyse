@@ -18,8 +18,8 @@ from typing import Any
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "gemma3:27b"
-TIMEOUT = 180  # Sekunden – Gemma3:27b braucht Zeit
+MODEL = "gemma4:latest"
+TIMEOUT = 180  # Sekunden
 
 logger = logging.getLogger(__name__)
 
