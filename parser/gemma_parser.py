@@ -32,37 +32,142 @@ PROMPT_TEMPLATE = """Du bist ein Datenextraktions-Assistent für Konzertticket-A
 
 Antworte AUSSCHLIESSLICH mit einem JSON-Array. Kein Fließtext, keine Erklärungen, kein Markdown.
 Das Array enthält IMMER mindestens ein Objekt.
-Bei Händlern mit mehreren Ticket-Kategorien desselben Events: ein Objekt PRO Kategorie.
 
-Anzeigentext:
----
-{text}
----
+Der Anzeigentext enthält willhaben-Navigation (z.B. "Zum Inhalt", "Nachrichten", "Rechtlicher Hinweis", "Noch mehr ähnliche Anzeigen"). Ignoriere diesen Rausch vollständig. Konzentriere dich ausschließlich auf Titel, Preis und den "Beschreibung"-Abschnitt.
 
-Pro Eintrag im Array folgende Felder:
+════════════════════════════════════════
+SCHRITT 1 — ORIGINALPREIS SUCHEN
+════════════════════════════════════════
+
+Durchsuche TITEL und BESCHREIBUNG nach Originalpreis-Mustern:
+
+  Direkte Bezeichnungen:
+    Originalpreis / Original-Preis / OVP / NP / Neupreis / UVP
+    Aufgedruckter Preis / Aufgedruckter Originalpreis
+
+  Umgangssprachlich:
+    "damals um X€ gekauft" / "damals um X€ pro Stück gekauft"
+    "habe X€ bezahlt" / "gekauft um X€" / "bezahlt X€"
+    "Ticketpreis war X€" / "Preis war X€"
+
+  Im Titel in Klammern:
+    "(Originalpreis X€)" / "(NP X€)" / "(OVP: X€)"
+
+→ Trage den Originalpreis IMMER als Preis PRO KARTE ein (nie als Gesamtbetrag).
+→ Kein Originalpreis erkennbar → null
+
+════════════════════════════════════════
+SCHRITT 2 — PREIS EINORDNEN
+════════════════════════════════════════
+
+`angebotspreis_gesamt` = der Gesamtbetrag für ALLE angebotenen Karten zusammen.
+  Wenn nur Preis pro Karte bekannt und Anzahl bekannt: Preis × Anzahl = Gesamt.
+  Wenn Anzahl unbekannt (z.B. Händler mit offener Stückzahl): null.
+
+`preis_ist_pro_karte` = ob der im Text genannte Preis pro Einzelkarte gilt.
+  true  → "Preis pro Karte", "je Ticket", "pro Stück", Händler-Preisilste
+  false → "beide zusammen", "für X Karten zusammen", "Gesamtpreis"
+  null  → unklar (→ confidence=niedrig)
+
+════════════════════════════════════════
+SCHRITT 3 — ANZAHL OBJEKTE
+════════════════════════════════════════
+
+WICHTIGSTE REGEL: Händler mit mehreren Ticket-Kategorien desselben Events
+→ EIN OBJEKT PRO KATEGORIE. Nicht ein zusammengefasstes Objekt!
+
+Beispiel: "1) Front-of-Stage EUR 129 / 2) Stehplatz EUR 99" → 2 Objekte!
+
+Normallfall (Privatperson, eine Kategorie): 1 Objekt.
+Mehrere VERSCHIEDENE Events in einer Anzeige: 1 Objekt, event_name="MEHRERE", confidence=niedrig.
+
+════════════════════════════════════════
+FEW-SHOT BEISPIELE
+════════════════════════════════════════
+
+--- BEISPIEL A: Privatverkauf, OVP "damals um X€ pro Stück" ---
+Titel: Dante YN - Tranquille Tour 2026 - Wien - 2x Tickets
+Preis: € 40
+Beschreibung: Krankheitsbedingt verkaufe ich 2 Tickets für Dante YN am 14.4. in Wien (FLUCC).
+Habe die Tickets damals um 30€ pro Stück gekauft und würde beide zusammen für 40€ weitergeben.
+
+Ausgabe:
+[{{"event_name": "Dante YN - Tranquille Tour 2026", "event_datum": "2026-04-14", "venue": "FLUCC", "stadt": "Wien", "kategorie": "Unbekannt", "anzahl_karten": 2, "angebotspreis_gesamt": 40.0, "preis_ist_pro_karte": false, "originalpreis_pro_karte": 30.0, "confidence": "hoch", "confidence_grund": null}}]
+
+--- BEISPIEL B: Privatverkauf, OVP "Originalpreis X Euro Pro Karte" ---
+Titel: Luciano Tickets Donauinsel Open Air
+Preis: € 40
+Beschreibung: Luciano Konzert 21.Juli 2026, Donauinsel Open Air.
+Verkaufe beide Karten um 40 Euro, Origninalpreis wäre normalerweise 79 Euro Pro Karte
+aber ich habe beide Karten gewonnen und gebe sie für 40 Euro weiter.
+
+Ausgabe:
+[{{"event_name": "Luciano", "event_datum": "2026-07-21", "venue": "Donauinsel Open Air", "stadt": "Wien", "kategorie": "Unbekannt", "anzahl_karten": 2, "angebotspreis_gesamt": 40.0, "preis_ist_pro_karte": false, "originalpreis_pro_karte": 79.0, "confidence": "hoch", "confidence_grund": null}}]
+
+--- BEISPIEL C: Händler 1 Kategorie, "Preis pro Karte", OVP explizit ---
+Titel: BERQ / Stehplatz / 18.11.26 Graz
+Preis: € 85
+Beschreibung: BERQ Live in Graz 18.11.26 Helmuth List Halle
+4 x Stehplatz – Preis pro Karte 85€ – auch einzeln abzugeben
+Originalpreis Stehplätze 58,90 € inkl.Gebühren
+
+Ausgabe:
+[{{"event_name": "BERQ", "event_datum": "2026-11-18", "venue": "Helmuth List Halle", "stadt": "Graz", "kategorie": "Stehplatz", "anzahl_karten": 4, "angebotspreis_gesamt": 340.0, "preis_ist_pro_karte": true, "originalpreis_pro_karte": 58.9, "confidence": "hoch", "confidence_grund": null}}]
+
+--- BEISPIEL D: OVP im Titel in Klammern ---
+Titel: Olivia Dean - Köln, 11.5., Lounge, (Originalpreis 300€), Plätze in 1. Reihe inkl Buffet
+Preis: € 290
+Beschreibung: Olivia Dean - Köln, 11.5., Lounge, Plätze in 1. Reihe inkl Buffet. Versand übernehme gerne ich.
+
+Ausgabe:
+[{{"event_name": "Olivia Dean", "event_datum": "2026-05-11", "venue": null, "stadt": "Köln", "kategorie": "VIP", "anzahl_karten": null, "angebotspreis_gesamt": 290.0, "preis_ist_pro_karte": null, "originalpreis_pro_karte": 300.0, "confidence": "mittel", "confidence_grund": "Anzahl Karten unklar; OVP aus Titel entnommen"}}]
+
+--- BEISPIEL E: Händler mit 2 Kategorien → ZWINGEND 2 Objekte ---
+Titel: Pizzera & Jaus 30.05.2026 Salzburg! Front of Stage & Stehplatz Tickets!
+Preis: € 99
+Beschreibung: Pizzera und Jaus, Salzburg, 30.05.2026, Residenzplatz Salzburg.
+1) Stehplatz Front-of-Stage* Preis pro Karte EUR 129,-
+2) Stehplatz** Preis pro Karte EUR 99,-
+Aufgedruckter Originalpreis Stehplatz Front-of-Stage* EUR 97,49
+Aufgedruckter Originalpreis Stehplatz** EUR 77,49
+
+Ausgabe (2 Objekte!):
+[
+  {{"event_name": "Pizzera & Jaus", "event_datum": "2026-05-30", "venue": "Residenzplatz Salzburg", "stadt": "Salzburg", "kategorie": "Front-of-Stage", "anzahl_karten": null, "angebotspreis_gesamt": null, "preis_ist_pro_karte": true, "originalpreis_pro_karte": 97.49, "confidence": "hoch", "confidence_grund": null}},
+  {{"event_name": "Pizzera & Jaus", "event_datum": "2026-05-30", "venue": "Residenzplatz Salzburg", "stadt": "Salzburg", "kategorie": "Stehplatz", "anzahl_karten": null, "angebotspreis_gesamt": null, "preis_ist_pro_karte": true, "originalpreis_pro_karte": 77.49, "confidence": "hoch", "confidence_grund": null}}
+]
+
+════════════════════════════════════════
+FELDER (je Objekt)
+════════════════════════════════════════
 
 {{
-  "event_name": "Künstlername oder Konzertname, so spezifisch wie möglich (string oder null)",
-  "event_datum": "Datum im Format YYYY-MM-DD (string oder null)",
+  "event_name": "Künstlername oder Konzertname (string oder null)",
+  "event_datum": "YYYY-MM-DD (string oder null)",
   "venue": "Veranstaltungsort/Halle (string oder null)",
   "stadt": "Stadt (string oder null)",
   "kategorie": "Stehplatz | Sitzplatz | VIP | Front-of-Stage | Gemischt | Unbekannt",
-  "anzahl_karten": "Anzahl der angebotenen Tickets (integer oder null)",
-  "angebotspreis_gesamt": "Gesamtpreis in Euro (float oder null)",
-  "preis_ist_pro_karte": "true wenn Preis pro Einzelkarte gilt, false wenn Gesamtpreis für alle, null wenn unklar",
-  "originalpreis_pro_karte": "Originalpreis pro Karte falls im Text erwähnt (float oder null)",
+  "anzahl_karten": "Anzahl angebotener Tickets (integer oder null)",
+  "angebotspreis_gesamt": "Gesamtbetrag für alle Karten in Euro (float oder null)",
+  "preis_ist_pro_karte": true/false/null,
+  "originalpreis_pro_karte": "OVP/NP/Originalpreis PRO Karte in Euro (float oder null)",
   "confidence": "hoch | mittel | niedrig",
-  "confidence_grund": "Kurze Begründung wenn confidence nicht hoch (string oder null)"
+  "confidence_grund": "Begründung wenn nicht hoch (string oder null)"
 }}
 
-Regeln:
-- confidence=hoch: event_name, event_datum, angebotspreis_gesamt und anzahl_karten alle eindeutig
-- confidence=mittel: 1-2 Felder unsicher oder fehlend, aber Kernaussage klar
-- confidence=niedrig: Event unklar, Preis nicht eindeutig zuordenbar, oder mehrere Konzerte vermischt
-- Mehrere verschiedene Events in einer Anzeige: EIN Objekt mit event_name="MEHRERE", confidence=niedrig
-- Händler mit mehreren Kategorien desselben Events: MEHRERE Objekte (je Kategorie eines)
-- Preis-Ambiguität (unklar ob pro Karte oder gesamt): preis_ist_pro_karte=null, confidence=niedrig
-- Setze NIEMALS einen Wert wenn du ihn nur erraten würdest — lieber null"""
+Confidence-Regeln:
+- hoch:    event_name, event_datum, angebotspreis_gesamt und anzahl_karten alle eindeutig
+           ODER Händler mit klarem Preis-pro-Karte (dann darf anzahl_karten null sein)
+- mittel:  1-2 Felder fehlen/unsicher, Kernaussage klar
+- niedrig: Event unklar, Preis nicht zuordenbar, grundlegende Ambiguität
+
+Setze NIEMALS einen Wert wenn du ihn nur erraten würdest — lieber null.
+
+════════════════════════════════════════
+AKTUELLE ANZEIGE
+════════════════════════════════════════
+
+{text}"""
 
 # Standardwerte wenn Parsing fehlschlägt (null statt 0 für optionale Felder)
 EMPTY_EVENT: dict[str, Any] = {
@@ -88,7 +193,6 @@ def _call_ollama(prompt: str) -> str:
             "model": MODEL,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
             "options": {
                 "temperature": 0.1,
                 "num_predict": 2048,
