@@ -28,41 +28,148 @@ PARSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
-PROMPT_TEMPLATE = """Du bist ein Datenextraktions-Assistent für Konzertticket-Anzeigen von willhaben.at.
+PROMPT_TEMPLATE = """Du analysierst eine Ticket-Anzeige von willhaben.at. Antworte NUR mit einem JSON-Array — kein Text, kein Markdown.
 
-Antworte AUSSCHLIESSLICH mit einem JSON-Array. Kein Fließtext, keine Erklärungen, kein Markdown.
-Das Array enthält IMMER mindestens ein Objekt.
-Bei Händlern mit mehreren Ticket-Kategorien desselben Events: ein Objekt PRO Kategorie.
-
-Anzeigentext:
----
+=== ANZEIGE ===
 {text}
+=== ENDE DER ANZEIGE ===
+
+WICHTIG: Der Abschnitt "Noch mehr ähnliche Anzeigen" am Ende enthält ANDERE Anzeigen — ignoriere ihn vollständig. Analysiere nur den Haupttext der Anzeige (Titel, Preis und Beschreibung).
+
 ---
 
-Pro Eintrag im Array folgende Felder:
+SCHRITT 1 — HÄNDLER ODER PRIVAT?
+Händler-Signale: "Unternehmen", "Ticketshop", "Ticketswien", "TicketExpress", "Kartenbüro", "Ticketbörse", "Hotline", "Firmenwebsite", "Anbieter kontaktieren", "Wirtschaftskammer", "§ 4a Abs. 1 Z 7 FAGG".
+→ Händler können mehrere Kategorien (Stehplatz, Sitzplatz, VIP, FoS) für dasselbe Event anbieten → je eine Zeile pro Kategorie.
+→ Privatperson: immer eine Zeile (außer wirklich mehrere verschiedene Events vermischt).
 
+SCHRITT 2 — ORIGINALPREIS ERKENNEN
+Suche nach diesen Mustern und extrahiere den Betrag als originalpreis_pro_karte (immer PRO KARTE, umrechnen falls nötig):
+• "Originalpreis: X€", "OVP: X€", "NP: X€", "UVP: X€", "Neupreis X€", "Listenpreis X€", "Normalpreis X€"
+• "OP: X Schilling" → Schilling in Euro ignorieren (null setzen, keine Umrechnung)
+• "originaler Kaufpreis X€", "damals um X€ gekauft", "damals um X€ pro Stück gekauft"
+• "gekauft für X€", "bezahlt X€", "hat X€ gekostet", "Preis war X€"
+• "(89€)", "(Originalpreis 300€)", "(NP 65€)" — Betrag in Klammern
+• "Originalpreis für 2 Karten X€" → divide by 2 → originalpreis_pro_karte
+• "Information zum Originalpreis gemäß: § 4a Abs. 1 Z 7 FAGG — Kategorie: X,XX" → X,XX ist der gesetzliche Originalpreis pro Karte
+• "unter OVP", "zum Originalpreis" → Hinweis dass OVP existiert, aber Wert oft im Text direkt danach
+Wenn kein Originalpreis erkennbar: null (nicht raten!).
+
+SCHRITT 3 — PREIS INTERPRETIEREN
+Der "Preis:" im Kopf ist der ANGEBOTSPREIS. Entscheide ob er pro Karte oder Gesamt ist:
+→ preis_ist_pro_karte=true: "je X€", "pro Karte X€", "pro Ticket X€", "Stückpreis X€", "FIXPREIS X€ JE Karte", "Preis pro Ticket: X€", "X€ pro Ticket"
+→ preis_ist_pro_karte=false: "für beide X€", "beide zusammen X€", "2 Karten für X€", "X€ für alle", "für N Stück X€"
+→ preis_ist_pro_karte=null: weder das eine noch das andere eindeutig erkennbar → confidence=niedrig
+
+SCHRITT 4 — CONFIDENCE
+• hoch: event_name + event_datum + angebotspreis_gesamt + anzahl_karten alle eindeutig aus dem Text
+• mittel: 1–2 Felder fehlen oder unklar, Kernaussage aber verständlich
+• niedrig: Preis-Ambiguität, mehrere vermischte Events, oder anzahl_karten völlig unklar
+
+---
+
+OUTPUT-SCHEMA (ein Objekt pro Kategorie bei Händlern, sonst ein Objekt):
 {{
-  "event_name": "Künstlername oder Konzertname, so spezifisch wie möglich (string oder null)",
-  "event_datum": "Datum im Format YYYY-MM-DD (string oder null)",
-  "venue": "Veranstaltungsort/Halle (string oder null)",
-  "stadt": "Stadt (string oder null)",
+  "event_name": "Künstler/Konzertname (string | null)",
+  "event_datum": "YYYY-MM-DD (string | null)",
+  "venue": "Halle/Location (string | null)",
+  "stadt": "Stadt (string | null)",
   "kategorie": "Stehplatz | Sitzplatz | VIP | Front-of-Stage | Gemischt | Unbekannt",
-  "anzahl_karten": "Anzahl der angebotenen Tickets (integer oder null)",
-  "angebotspreis_gesamt": "Gesamtpreis in Euro (float oder null)",
-  "preis_ist_pro_karte": "true wenn Preis pro Einzelkarte gilt, false wenn Gesamtpreis für alle, null wenn unklar",
-  "originalpreis_pro_karte": "Originalpreis pro Karte falls im Text erwähnt (float oder null)",
+  "anzahl_karten": "Anzahl der angebotenen Tickets (integer | null)",
+  "angebotspreis_gesamt": "Gesamtpreis aller Karten in Euro (float | null)",
+  "preis_ist_pro_karte": "true | false | null",
+  "originalpreis_pro_karte": "Originalpreis je Karte in Euro (float | null)",
   "confidence": "hoch | mittel | niedrig",
-  "confidence_grund": "Kurze Begründung wenn confidence nicht hoch (string oder null)"
+  "confidence_grund": "Pflicht wenn nicht hoch (string | null)"
 }}
 
-Regeln:
-- confidence=hoch: event_name, event_datum, angebotspreis_gesamt und anzahl_karten alle eindeutig
-- confidence=mittel: 1-2 Felder unsicher oder fehlend, aber Kernaussage klar
-- confidence=niedrig: Event unklar, Preis nicht eindeutig zuordenbar, oder mehrere Konzerte vermischt
-- Mehrere verschiedene Events in einer Anzeige: EIN Objekt mit event_name="MEHRERE", confidence=niedrig
-- Händler mit mehreren Kategorien desselben Events: MEHRERE Objekte (je Kategorie eines)
-- Preis-Ambiguität (unklar ob pro Karte oder gesamt): preis_ist_pro_karte=null, confidence=niedrig
-- Setze NIEMALS einen Wert wenn du ihn nur erraten würdest — lieber null"""
+---
+
+BEISPIELE:
+
+Beispiel A — Einfache Privatanzeige mit OVP:
+Titel: Dante YN - Tranquille Tour 2026 - Wien - 2x Tickets
+Preis: € 40
+Beschreibung: Krankheitsbedingt verkaufe ich kurzfristig 2 Tickets für Dante YN - Tranquille Tour 2026 am 14.4. in Wien (FLUCC). Habe die Tickets damals um 30€ pro Stück gekauft und würde beide zusammen für 40€ weitergeben.
+→ [
+  {{
+    "event_name": "Dante YN - Tranquille Tour 2026",
+    "event_datum": "2026-04-14",
+    "venue": "FLUCC",
+    "stadt": "Wien",
+    "kategorie": "Unbekannt",
+    "anzahl_karten": 2,
+    "angebotspreis_gesamt": 40.0,
+    "preis_ist_pro_karte": false,
+    "originalpreis_pro_karte": 30.0,
+    "confidence": "hoch",
+    "confidence_grund": null
+  }}
+]
+
+Beispiel B — Händler mit § 4a FAGG Originalpreis:
+Titel: Soap & Skin 05.07.2026 Wiener Staatsoper TOP Sitzplätze Parkett - 3.Reihe
+Preis: € 129
+Beschreibung: SOAP & SKIN IN WIEN. Datum: 5. Juli 2026. Location: Wiener Staatsoper. 4x TOP-Sitzplätze Parkett - 3.Reihe. Preis pro Ticket: 129,-- Euro. 100% ORIGINAL - TICKETS!!! Gewerbliches Kartenbüro. Information zum Originalpreis gemäß: § 4a Abs. 1 Z 7 FAGG. TOP Sitzplatz Parkett: 109,50
+→ [
+  {{
+    "event_name": "Soap & Skin",
+    "event_datum": "2026-07-05",
+    "venue": "Wiener Staatsoper",
+    "stadt": "Wien",
+    "kategorie": "Sitzplatz",
+    "anzahl_karten": 4,
+    "angebotspreis_gesamt": 516.0,
+    "preis_ist_pro_karte": true,
+    "originalpreis_pro_karte": 109.5,
+    "confidence": "hoch",
+    "confidence_grund": null
+  }}
+]
+
+Beispiel C — Expliziter Originalpreis + pro Karte Preis:
+Titel: (reserviert) 2x BTS TICKETS IN MÜNCHEN - SA. 11. JULI 2026
+Preis: € 500
+Beschreibung: Tickets für BTS „ARIRANG" in München. Originalpreis: € 180,50 pro Ticket. Verkaufspreis: €500 pro Ticket. Bereich 228 Kern H.
+→ [
+  {{
+    "event_name": "BTS - ARIRANG World Tour",
+    "event_datum": "2026-07-11",
+    "venue": null,
+    "stadt": "München",
+    "kategorie": "Sitzplatz",
+    "anzahl_karten": 2,
+    "angebotspreis_gesamt": 1000.0,
+    "preis_ist_pro_karte": true,
+    "originalpreis_pro_karte": 180.5,
+    "confidence": "hoch",
+    "confidence_grund": null
+  }}
+]
+
+Beispiel D — Unklarer Preis (pro Karte oder gesamt?):
+Titel: ADELE - The show from London
+Preis: € 250
+Beschreibung: Ich verkaufe 4 Tickets. In der Reihe 11. Das Event findet am 31.10.2026 im Austria Center Vienna statt. Privatverkauf.
+→ [
+  {{
+    "event_name": "Adele - The Show from London",
+    "event_datum": "2026-10-31",
+    "venue": "Austria Center Vienna",
+    "stadt": "Wien",
+    "kategorie": "Sitzplatz",
+    "anzahl_karten": 4,
+    "angebotspreis_gesamt": 250.0,
+    "preis_ist_pro_karte": null,
+    "originalpreis_pro_karte": null,
+    "confidence": "niedrig",
+    "confidence_grund": "Unklar ob 250€ pro Karte oder für alle 4 Karten gesamt"
+  }}
+]
+
+---
+
+Jetzt analysiere die obige Anzeige und gib NUR das JSON-Array zurück."""
 
 # Standardwerte wenn Parsing fehlschlägt (null statt 0 für optionale Felder)
 EMPTY_EVENT: dict[str, Any] = {
