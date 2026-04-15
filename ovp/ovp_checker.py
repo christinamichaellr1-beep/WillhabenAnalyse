@@ -258,11 +258,15 @@ async def check_events(events: list[dict], log_fn=logger.info, headless: bool = 
 
             key = _event_key(event_name, event_datum)
 
+            # Parser-OVP aus Anzeigentext als Fallback merken
+            parser_ovp = event.get("originalpreis_pro_karte")
+
             # 1. Cache-Hit?
             if key in ovp_cache:
                 cached = ovp_cache[key]
-                event["originalpreis_pro_karte"] = cached.get("preis")
-                event["ovp_quelle"] = cached.get("quelle", "")
+                online_preis = cached.get("preis")
+                event["originalpreis_pro_karte"] = online_preis if online_preis is not None else parser_ovp
+                event["ovp_quelle"] = cached.get("quelle", "") if online_preis is not None else ("Anzeige" if parser_ovp is not None else "")
                 event["ausverkauft"] = cached.get("ausverkauft", "unbekannt")
                 results.append(event)
                 continue
@@ -270,8 +274,9 @@ async def check_events(events: list[dict], log_fn=logger.info, headless: bool = 
             # 2. Bereits in diesem Run geprüft?
             if key in checked_keys:
                 ovp_result = checked_keys[key]
-                event["originalpreis_pro_karte"] = ovp_result.get("preis")
-                event["ovp_quelle"] = ovp_result.get("quelle", "")
+                online_preis = ovp_result.get("preis")
+                event["originalpreis_pro_karte"] = online_preis if online_preis is not None else parser_ovp
+                event["ovp_quelle"] = ovp_result.get("quelle", "") if online_preis is not None else ("Anzeige" if parser_ovp is not None else "")
                 event["ausverkauft"] = ovp_result.get("ausverkauft", "unbekannt")
                 results.append(event)
                 continue
@@ -304,8 +309,10 @@ async def check_events(events: list[dict], log_fn=logger.info, headless: bool = 
             checked_keys[key] = ovp_result
             cache_updated = True
 
-            event["originalpreis_pro_karte"] = ovp_result.get("preis")
-            event["ovp_quelle"] = ovp_result.get("quelle", "")
+            # Online-Preis hat Vorrang; Fallback auf Parser-OVP
+            online_preis = ovp_result.get("preis")
+            event["originalpreis_pro_karte"] = online_preis if online_preis is not None else parser_ovp
+            event["ovp_quelle"] = ovp_result.get("quelle", "") if online_preis is not None else ("Anzeige" if parser_ovp is not None else "")
             event["ausverkauft"] = ovp_result.get("ausverkauft", "unbekannt")
             results.append(event)
 

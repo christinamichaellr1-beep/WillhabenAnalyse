@@ -32,14 +32,14 @@ def _find_gdrive_sync_folder() -> Path | None:
     Gibt den ersten gefundenen Google Drive My-Drive-Ordner zurück oder None.
     """
     candidates = [
-        # Google Drive for Desktop (neu, macOS 12+)
+        # Google Drive for Desktop – deutsche macOS-Lokalisierung
+        *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*/Meine Ablage")),
+        # Google Drive for Desktop – englische Lokalisierung
         *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*/My Drive")),
-        *sorted(Path.home().glob("Library/CloudStorage/GoogleDrive-*")),
-        # Ältere Versionen
+        # Ältere Versionen / Backup and Sync
+        Path.home() / "Google Drive" / "My Drive",
         Path.home() / "Google Drive",
         *sorted(Path.home().glob("Google Drive - *")),
-        # Backup and Sync
-        Path.home() / "Google Drive" / "My Drive",
     ]
     for path in candidates:
         if path.exists() and path.is_dir():

@@ -162,12 +162,14 @@ def _compute_fields(event: dict) -> dict:
 
     # Angebotspreis pro Karte
     pro_karte = None
-    if gesamt is not None:
-        if pipc is True:
-            pro_karte = gesamt
-        elif pipc is False and anzahl and anzahl > 0:
-            pro_karte = round(gesamt / anzahl, 2)
-        # pipc=None → unbekannt → None
+    # angebotspreis_gesamt ist IMMER der Gesamtbetrag für alle Karten.
+    # angebotspreis_pro_karte = Gesamtbetrag / Anzahl (unabhängig von pipc).
+    if gesamt is not None and anzahl and anzahl > 0:
+        pro_karte = round(gesamt / anzahl, 2)
+    elif gesamt is not None and pipc is True:
+        # Händler mit unbekannter Stückzahl: Gesamtbetrag IST der Preis pro Karte
+        pro_karte = gesamt
+    # pipc=None oder gesamt=None ohne Anzahl → None
     result["angebotspreis_pro_karte"] = pro_karte
 
     # Marge
