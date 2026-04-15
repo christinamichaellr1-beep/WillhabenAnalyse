@@ -134,7 +134,7 @@ def run_pipeline(log_callback: Callable[[str], None] | None = None) -> dict:
             _log("=== SCHRITT 4b: Google Drive Upload ===")
             try:
                 from export.gdrive_upload import upload_to_gdrive
-                ok = upload_to_gdrive(excel_path)
+                ok = upload_to_gdrive(excel_path, raw_cache_dir=BASE_DIR / "data" / "raw_cache")
                 stats["gdrive_upload"] = ok
                 _log(f"Google Drive: {'hochgeladen' if ok else 'nicht verfügbar (siehe Log)'}.")
             except Exception as exc:
