@@ -65,6 +65,33 @@ def _upload_via_sync(excel_path: Path, sync_root: Path) -> bool:
         return False
 
 
+def _sync_raw_cache(raw_cache_dir: Path, sync_root: Path) -> int:
+    """
+    Kopiert neue/geänderte JSON-Dateien aus raw_cache_dir nach GDrive.
+    Gibt die Anzahl kopierter Dateien zurück.
+    """
+    if not raw_cache_dir.exists():
+        return 0
+    target_dir = sync_root / GDRIVE_SUBFOLDER / "raw_cache"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for src in raw_cache_dir.glob("*.json"):
+            dest = target_dir / src.name
+            # Nur kopieren wenn Datei neu oder neuer als Ziel
+            if not dest.exists() or src.stat().st_mtime > dest.stat().st_mtime:
+                shutil.copy2(src, dest)
+                copied += 1
+        if copied:
+            logger.info("Google Drive: %d neue/geänderte raw_cache JSON(s) synchronisiert", copied)
+        else:
+            logger.debug("Google Drive: raw_cache bereits aktuell, nichts kopiert")
+        return copied
+    except Exception as exc:
+        logger.error("Google Drive raw_cache Sync fehlgeschlagen: %s", exc)
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # Upload via gdrive CLI
 # ---------------------------------------------------------------------------
@@ -115,7 +142,7 @@ def _upload_via_cli(excel_path: Path, cli_path: str) -> bool:
 
 def upload_to_gdrive(excel_path: Path) -> bool:
     """
-    Lädt die Excel-Datei nach Google Drive hoch.
+    Lädt die Excel-Datei nach Google Drive hoch und synchronisiert raw_cache.
     Gibt True zurück wenn erfolgreich, False sonst.
     Wirft keine Exceptions – Fehler werden nur geloggt.
     """
@@ -126,7 +153,11 @@ def upload_to_gdrive(excel_path: Path) -> bool:
     # Strategie 1: Sync-Ordner
     sync_folder = _find_gdrive_sync_folder()
     if sync_folder:
-        return _upload_via_sync(excel_path, sync_folder)
+        ok = _upload_via_sync(excel_path, sync_folder)
+        # raw_cache liegt neben der Excel-Datei
+        raw_cache_dir = excel_path.parent / "raw_cache"
+        _sync_raw_cache(raw_cache_dir, sync_folder)
+        return ok
 
     # Strategie 2: CLI
     cli = _find_gdrive_cli()
