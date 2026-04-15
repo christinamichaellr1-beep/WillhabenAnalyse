@@ -1,7 +1,7 @@
 """
 gdrive_upload.py
 
-Lädt die Excel-Datei nach Google Drive hoch.
+Lädt die Excel-Datei und raw_cache nach Google Drive hoch.
 
 Strategie (in Reihenfolge):
   1. Lokaler Google Drive Sync-Ordner gefunden → Datei hineinkopieren (sofort sync)
@@ -65,6 +65,32 @@ def _upload_via_sync(excel_path: Path, sync_root: Path) -> bool:
         return False
 
 
+def _sync_raw_cache(raw_cache_dir: Path, sync_root: Path) -> int:
+    """
+    Kopiert nur neue JSON-Dateien aus raw_cache_dir in den Google Drive Sync-Ordner.
+    Gibt die Anzahl der neu kopierten Dateien zurück.
+    """
+    if not raw_cache_dir.exists():
+        return 0
+    target_dir = sync_root / GDRIVE_SUBFOLDER / "raw_cache"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for src in raw_cache_dir.glob("*.json"):
+            dest = target_dir / src.name
+            if not dest.exists():
+                shutil.copy2(src, dest)
+                copied += 1
+        if copied:
+            logger.info("Google Drive raw_cache: %d neue Dateien kopiert nach %s", copied, target_dir)
+        else:
+            logger.debug("Google Drive raw_cache: keine neuen Dateien")
+        return copied
+    except Exception as exc:
+        logger.error("Google Drive raw_cache Sync fehlgeschlagen: %s", exc)
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # Upload via gdrive CLI
 # ---------------------------------------------------------------------------
@@ -113,11 +139,13 @@ def _upload_via_cli(excel_path: Path, cli_path: str) -> bool:
 # Public API
 # ---------------------------------------------------------------------------
 
-def upload_to_gdrive(excel_path: Path) -> bool:
+def upload_to_gdrive(excel_path: Path, raw_cache_dir: Path | None = None) -> bool:
     """
-    Lädt die Excel-Datei nach Google Drive hoch.
+    Lädt die Excel-Datei (und optional raw_cache) nach Google Drive hoch.
     Gibt True zurück wenn erfolgreich, False sonst.
     Wirft keine Exceptions – Fehler werden nur geloggt.
+
+    raw_cache_dir: Verzeichnis mit *.json-Dateien; nur neue Dateien werden kopiert.
     """
     if not excel_path.exists():
         logger.warning("Excel-Datei nicht gefunden: %s", excel_path)
@@ -126,7 +154,10 @@ def upload_to_gdrive(excel_path: Path) -> bool:
     # Strategie 1: Sync-Ordner
     sync_folder = _find_gdrive_sync_folder()
     if sync_folder:
-        return _upload_via_sync(excel_path, sync_folder)
+        ok = _upload_via_sync(excel_path, sync_folder)
+        if raw_cache_dir is not None:
+            _sync_raw_cache(raw_cache_dir, sync_folder)
+        return ok
 
     # Strategie 2: CLI
     cli = _find_gdrive_cli()
