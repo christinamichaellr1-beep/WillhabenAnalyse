@@ -46,6 +46,7 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("watchlist",               "Watchlist"),
     ("confidence",              "Confidence"),
     ("review_nötig",            "Review nötig"),
+    ("zuletzt_geändert",        "Zuletzt geändert"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
@@ -298,6 +299,9 @@ def upsert_events(events: list[dict], excel_path: Path) -> dict:
         event = _compute_fields(event)
         event.setdefault("scan_datum", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
         event.setdefault("watchlist", "nein")
+
+        # Zeitstempel für Zuletzt-geändert immer aktualisieren
+        event["zuletzt_geändert"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
         # --- Hauptübersicht ---
         if wid in main_index:

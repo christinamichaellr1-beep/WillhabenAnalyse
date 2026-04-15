@@ -55,6 +55,15 @@ Pro Eintrag im Array folgende Felder:
   "confidence_grund": "Kurze Begründung wenn confidence nicht hoch (string oder null)"
 }}
 
+Suche GEZIELT nach dem Originalpreis. Verkäufer verwenden viele Formulierungen:
+- 'Originalpreis', 'OVP', 'NP' (Neupreis), 'UVP'
+- 'gekauft um', 'gekauft für', 'bezahlt', 'hat gekostet'
+- 'regulärer Preis', 'Normalpreis', 'Listenpreis'
+- 'NP war X€', 'OVP X€', 'Original X€'
+- Preise in Klammern wie '(89€)' oder '(Originalpreis 300€)'
+- Jede Zahl mit € die NICHT der Angebotspreis ist könnte der OVP sein
+Falls zwei verschiedene Preise im Text: der HÖHERE als Angebotspreis, der NIEDRIGERE ist oft der OVP. Oder umgekehrt wenn jemand unter OVP verkauft.
+
 Regeln:
 - confidence=hoch: event_name, event_datum, angebotspreis_gesamt und anzahl_karten alle eindeutig
 - confidence=mittel: 1-2 Felder unsicher oder fehlend, aber Kernaussage klar
