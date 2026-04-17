@@ -127,9 +127,16 @@ class ZeitplanTab(_TK_BASE):  # type: ignore[misc]
             messagebox.showerror("Fehler", "Ungültige Stunden- oder Minutenangabe.")
             return
 
+        # Prefer the project venv python; fall back to the running interpreter
+        venv_python = str(self.base_dir / ".venv" / "bin" / "python3")
+        if Path(venv_python).exists():
+            python_path = venv_python
+        else:
+            python_path = sys.executable  # fallback
+
         xml = launchd_manager.generate_plist(
             label=label,
-            python_path=sys.executable,
+            python_path=python_path,
             project_dir=str(self.base_dir),
             model=self.config_data.get("model", "gemma3:27b"),
             max_listings=self.config_data.get("max_listings"),
