@@ -57,6 +57,7 @@ def run_pipeline(
     parser_version: str = "v2",
     model_override: str | None = None,
     dry_run: bool = False,
+    max_listings: int | None = None,
 ) -> dict:
     """
     Führt die komplette Pipeline aus:
@@ -100,6 +101,10 @@ def run_pipeline(
     if not ads:
         _log("Keine Anzeigen – Pipeline abgebrochen.")
         return stats
+
+    if max_listings:
+        ads = ads[:max_listings]
+        _log(f"--max-listings: auf {max_listings} begrenzt.")
 
     # ---- 2. Parsing ----
     _log(f"=== SCHRITT 2: Parsing ({parser_version}) ===")
@@ -239,6 +244,14 @@ if __name__ == "__main__":
         dest="dry_run",
         help="Komplette Pipeline ohne Excel- und Drive-Write",
     )
+    parser.add_argument(
+        "--max-listings",
+        type=int,
+        default=None,
+        metavar="N",
+        dest="max_listings",
+        help="Begrenze die Anzahl der zu parsenden Anzeigen auf N (nur mit --once)",
+    )
     args = parser.parse_args()
 
     if args.test_batch:
@@ -275,6 +288,7 @@ if __name__ == "__main__":
             parser_version=args.parser_version,
             model_override=args.model,
             dry_run=args.dry_run,
+            max_listings=args.max_listings,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif args.ovp:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import extractor, postprocessing, preprocessing, prompt
+from .status_writer import StatusWriter
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def parse_ads(
     all_events: list[dict] = []
     total = len(ads)
     cache_hits = 0
+    writer = StatusWriter(total=total, model=model or "gemma3:27b")
 
     for i, ad in enumerate(ads, 1):
         ad_id = str(ad.get("id", ""))
@@ -74,16 +76,28 @@ def parse_ads(
             if cached is not None:
                 all_events.extend(cached)
                 cache_hits += 1
+                ad_title = ad.get("title", ad.get("beschreibung", ""))[:80]
+                writer.update(current=i, ad_id=ad_id, title=ad_title)
                 continue
 
         logger.info("Parse %d/%d: %s (v2)", i, total, ad_id or "?")
-        events = parse_ad(ad, model=model, use_cache=False)
+        try:
+            events = parse_ad(ad, model=model, use_cache=False)
+        except Exception as exc:
+            writer.error(str(exc))
+            logger.warning("Fehler beim Parsen von %s: %s", ad_id, exc)
+            events = []
 
         if use_cache and ad_id:
             _save_cache(ad_id, events)
 
         all_events.extend(events)
 
+        ad_title = ad.get("title", ad.get("beschreibung", ""))[:80]
+        duration_ms = events[0].get("parse_dauer_ms") if events else None
+        writer.update(current=i, ad_id=ad_id, title=ad_title, duration_ms=duration_ms)
+
+    writer.finish()
     logger.info(
         "v2 Parsing fertig: %d Events, %d Cache-Hits, %d Ollama-Aufrufe",
         len(all_events), cache_hits, total - cache_hits,
