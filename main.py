@@ -44,13 +44,26 @@ def load_config() -> dict:
 # Pipeline
 # ---------------------------------------------------------------------------
 
-def run_pipeline(log_callback: Callable[[str], None] | None = None) -> dict:
+def _select_parse_ads(parser_version: str):
+    if parser_version == "v2":
+        from parser.v2 import parse_ads
+    else:
+        from parser.gemma_parser import parse_ads
+    return parse_ads
+
+
+def run_pipeline(
+    log_callback: Callable[[str], None] | None = None,
+    parser_version: str = "v1",
+    model_override: str | None = None,
+    dry_run: bool = False,
+) -> dict:
     """
     Führt die komplette Pipeline aus:
     1. Scraping
-    2. Parsing (Gemma/Ollama)
+    2. Parsing (Gemma/Ollama) — parser_version wählt v1 oder v2
     3. OVP-Check
-    4. Excel-Update
+    4. Excel-Update (übersprungen bei dry_run=True)
 
     Gibt Statistik-Dict zurück.
     """
@@ -89,10 +102,13 @@ def run_pipeline(log_callback: Callable[[str], None] | None = None) -> dict:
         return stats
 
     # ---- 2. Parsing ----
-    _log("=== SCHRITT 2: Parsing (Gemma) ===")
+    _log(f"=== SCHRITT 2: Parsing ({parser_version}) ===")
     try:
-        from parser.gemma_parser import parse_ads
-        events = parse_ads(ads)
+        parse_ads = _select_parse_ads(parser_version)
+        kwargs: dict = {}
+        if parser_version == "v2" and model_override:
+            kwargs["model"] = model_override
+        events = parse_ads(ads, **kwargs)
         stats["parsed_events"] = len(events)
         _log(f"Parsing: {len(events)} Events extrahiert.")
     except Exception as exc:
@@ -113,6 +129,11 @@ def run_pipeline(log_callback: Callable[[str], None] | None = None) -> dict:
         logger.warning("OVP-Check fehlgeschlagen (nicht kritisch): %s", exc)
 
     # ---- 4. Excel ----
+    if dry_run:
+        _log("=== SCHRITT 4: Excel-Update (dry-run, übersprungen) ===")
+        _log(f"=== PIPELINE FERTIG (dry-run): {stats} ===")
+        return stats
+
     _log("=== SCHRITT 4: Excel-Update ===")
     if events:
         try:
@@ -192,13 +213,69 @@ if __name__ == "__main__":
     parser.add_argument("--once", action="store_true", help="Einmaliger Pipeline-Run")
     parser.add_argument("--daemon", action="store_true", help="Scheduling-Daemon starten")
     parser.add_argument("--ovp", action="store_true", help="Nur OVP-Check")
+    parser.add_argument(
+        "--model",
+        choices=["gemma3:27b", "gemma4:26b", "gemma4:latest"],
+        default=None,
+        help="Ollama-Modell überschreiben (nur mit --parser-version v2 wirksam)",
+    )
+    parser.add_argument(
+        "--parser-version",
+        choices=["v1", "v2"],
+        default="v1",
+        dest="parser_version",
+        help="Parser-Version: v1=gemma_parser (default), v2=parser/v2/",
+    )
+    parser.add_argument(
+        "--test-batch",
+        type=int,
+        metavar="N",
+        dest="test_batch",
+        help="Teste Parser auf ersten N raw_cache-Einträgen, kein Excel-Write",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Komplette Pipeline ohne Excel- und Drive-Write",
+    )
     args = parser.parse_args()
 
-    if args.gui:
+    if args.test_batch:
+        raw_cache_dir = BASE_DIR / "data" / "raw_cache"
+        cached_ads = []
+        for f in sorted(raw_cache_dir.glob("*.json"))[: args.test_batch]:
+            try:
+                cached_ads.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+        if not cached_ads:
+            print("Kein raw_cache vorhanden. Zuerst --once ausführen.")
+            sys.exit(1)
+        parse_ads = _select_parse_ads(args.parser_version)
+        kwargs: dict = {}
+        if args.parser_version == "v2" and args.model:
+            kwargs["model"] = args.model
+        events = parse_ads(cached_ads, use_cache=False, **kwargs)
+        print(json.dumps(
+            [
+                {k: v for k, v in e.items()
+                 if k in ("event_name", "event_datum", "confidence",
+                          "modell", "pipeline_version", "parse_dauer_ms",
+                          "originalpreis_pro_karte", "angebotspreis_gesamt")}
+                for e in events
+            ],
+            indent=2, ensure_ascii=False,
+        ))
+    elif args.gui:
         from app.gui import main as gui_main
         gui_main()
     elif args.once:
-        result = run_pipeline()
+        result = run_pipeline(
+            parser_version=args.parser_version,
+            model_override=args.model,
+            dry_run=args.dry_run,
+        )
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif args.ovp:
         raw_cache_dir = BASE_DIR / "data" / "raw_cache"

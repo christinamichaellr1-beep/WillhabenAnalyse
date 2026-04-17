@@ -46,6 +46,11 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("watchlist",               "Watchlist"),
     ("confidence",              "Confidence"),
     ("review_nötig",            "Review nötig"),
+    # v2.0 — neue Felder (Spalten 25–28); ältere Zeilen lassen diese leer
+    ("confidence_grund",        "Confidence-Grund"),
+    ("modell",                  "Modell"),
+    ("pipeline_version",        "Pipeline-Version"),
+    ("parse_dauer_ms",          "Parse-Dauer ms"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
