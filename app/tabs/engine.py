@@ -129,6 +129,9 @@ class EngineTab(_TK_BASE):  # type: ignore[misc]
 
     def _start_test(self) -> None:
         """Start a test pipeline run in a background daemon thread."""
+        if self._proc is not None and subprocess_runner.is_running(self._proc):
+            messagebox.showwarning("Läuft bereits", "Ein Test-Lauf ist bereits aktiv.")
+            return
         try:
             n = int(self._test_batch_var.get())
         except ValueError:
@@ -157,7 +160,11 @@ class EngineTab(_TK_BASE):  # type: ignore[misc]
         """Save model and max_listings to config."""
         self.config_data["model"] = self._model_var.get()
         raw = self._max_listings_var.get().strip()
-        self.config_data["max_listings"] = None if raw == "Alle" else int(raw)
+        try:
+            self.config_data["max_listings"] = None if raw == "Alle" else int(raw)
+        except ValueError:
+            messagebox.showerror("Fehler", "Ungültige Anzahl — bitte Zahl oder 'Alle' eingeben.")
+            return
         self.save_config_fn(self.config_data)
         messagebox.showinfo("Gespeichert", "Einstellungen wurden gespeichert.")
 

@@ -146,6 +146,10 @@ class StatusTab(_TK_BASE):  # type: ignore[misc]
 
     def _start_pipeline(self) -> None:
         """Start pipeline subprocess and kick off auto-refresh."""
+        if self._proc is not None and subprocess_runner.is_running(self._proc):
+            messagebox.showwarning("Läuft bereits", "Die Pipeline ist bereits aktiv.")
+            return
+
         def _run() -> None:
             self._proc = subprocess_runner.start_pipeline(
                 python_path=sys.executable,
@@ -158,6 +162,12 @@ class StatusTab(_TK_BASE):  # type: ignore[misc]
         threading.Thread(target=_run, daemon=True).start()
         # Begin auto-refresh immediately
         self.after(500, self._refresh)
+
+    def destroy(self) -> None:
+        if self._after_id is not None:
+            self.after_cancel(self._after_id)
+            self._after_id = None
+        super().destroy()
 
     # ------------------------------------------------------------------
     # Public helper for unit tests (pure logic, no Tk needed)

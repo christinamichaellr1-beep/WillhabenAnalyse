@@ -4,6 +4,7 @@ dashboard.py — D4: Marktanalyse Tab
 Class DashboardTab(ttk.Frame):
   Loads aggregated Excel data and displays it in a Treeview with filter/sort.
 """
+import math
 from pathlib import Path
 from typing import Callable
 
@@ -149,12 +150,12 @@ class DashboardTab(_TK_BASE):  # type: ignore[misc]
             return
 
         df = self._df.copy()
-        search = self._search_var.get().strip().lower() if hasattr(self, "_search_var") else ""
+        search = self._search_var.get().strip().lower()
         if search:
             mask = df["Event"].astype(str).str.lower().str.contains(search, na=False)
             df = df[mask]
 
-        sort_col = self._sort_var.get() if hasattr(self, "_sort_var") else ""
+        sort_col = self._sort_var.get()
         if sort_col and sort_col in df.columns:
             try:
                 df = df.sort_values(by=sort_col, ascending=True)
@@ -179,7 +180,6 @@ class DashboardTab(_TK_BASE):  # type: ignore[misc]
             for col in _COLUMNS:
                 val = row.get(col, "")
                 if isinstance(val, float):
-                    import math
                     if math.isnan(val):
                         values.append("")
                     else:
