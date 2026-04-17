@@ -54,7 +54,7 @@ def _select_parse_ads(parser_version: str):
 
 def run_pipeline(
     log_callback: Callable[[str], None] | None = None,
-    parser_version: str = "v1",
+    parser_version: str = "v2",
     model_override: str | None = None,
     dry_run: bool = False,
 ) -> dict:
@@ -222,9 +222,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--parser-version",
         choices=["v1", "v2"],
-        default="v1",
+        default="v2",
         dest="parser_version",
-        help="Parser-Version: v1=gemma_parser (default), v2=parser/v2/",
+        help="Parser-Version: v2=parser/v2/ (default), v1=gemma_parser (Rollback)",
     )
     parser.add_argument(
         "--test-batch",

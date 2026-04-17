@@ -20,6 +20,39 @@ _CONTENT_PATTERNS = re.compile(
 
 _CATEGORY_TITLE = re.compile(r"^\d[\d.,]+ Anzeigen in ", re.IGNORECASE)
 
+# Marker lines that separate the main ad body from related-ad suggestions
+_SIMILAR_ADS_MARKER = re.compile(
+    r"noch mehr ähnliche anzeigen|weitere anzeigen von\s+\S|sende eine nachricht",
+    re.IGNORECASE,
+)
+
+# Keywords indicating a ticket/event ad
+_EVENT_KEYWORDS = re.compile(
+    r"\btickets?\b|\bkarten?\b|\beintrittskarten?\b|\bkonzert\b|\bfestival\b|"
+    r"\bevent\b|\bveranstaltung(?:en)?\b|\blive\b|\btour\b|\bstehplatz\b|\bsitzplatz\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_main_description(text: str) -> str:
+    """Returns the ad's main body text, stripped of nav prefix and similar-ads section."""
+    stripped = strip_nav_prefix(text)
+    match = _SIMILAR_ADS_MARKER.search(stripped)
+    if match:
+        return stripped[: match.start()]
+    return stripped
+
+
+def is_non_ticket_ad(ad: dict) -> bool:
+    """
+    True wenn Titel + Hauptbeschreibung keine Event-/Ticket-Keywords enthalten.
+    Verhindert LLM-Aufruf für Anzeigen die zufällig in der Tickets-Kategorie landen.
+    """
+    titel = ad.get("titel", "") or ""
+    text = ad.get("text_komplett", "") or ""
+    combined = titel + "\n" + _extract_main_description(text)
+    return not _EVENT_KEYWORDS.search(combined)
+
 
 def is_category_page(ad: dict) -> bool:
     """

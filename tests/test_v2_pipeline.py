@@ -37,6 +37,23 @@ CATEGORY_PAGE_AD = {
     "mitglied_seit": "",
 }
 
+NON_TICKET_AD = {
+    "id": "1219472817",
+    "link": "https://willhaben.at/test-non-ticket",
+    "titel": "Nebelfluid/ Fog Fluid",
+    "preis_roh": "€ 10",
+    "text_komplett": (
+        NAV_TEXT +
+        "Nebelfluid/ Fog Fluid\n1220 Wien, 22. Bezirk, Donaustadt\n"
+        "€ 10\nVerkaufspreis\nFlüssigkeit für Nebelmachine\n"
+        "Noch mehr ähnliche Anzeigen\n2x Sitzplatz Foo Fighters\n€ 145"
+    ),
+    "verkäufertyp": "Privat",
+    "verkäufername": "Nevin",
+    "verkäufer_id": "",
+    "mitglied_seit": "12/2012",
+}
+
 MOCK_RESPONSE = json.dumps({
     "events": [{
         "event_name": "Rammstein",
@@ -97,7 +114,15 @@ def test_parse_ad_category_page_skipped_without_ollama_call():
     with patch("parser.v2.extractor.requests.post") as mp:
         result = parse_ad(CATEGORY_PAGE_AD, use_cache=False)
     mp.assert_not_called()
-    assert result[0]["confidence"] == "niedrig"
+    assert result == []
+
+
+def test_parse_ad_non_ticket_skipped_without_ollama_call():
+    from parser.v2.pipeline import parse_ad
+    with patch("parser.v2.extractor.requests.post") as mp:
+        result = parse_ad(NON_TICKET_AD, use_cache=False)
+    mp.assert_not_called()
+    assert result == []
 
 
 def test_parse_ads_processes_multiple_ads():

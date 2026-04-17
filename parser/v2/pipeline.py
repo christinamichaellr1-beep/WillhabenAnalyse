@@ -31,9 +31,11 @@ def parse_ad(
     # Category-Page-Filter (kein Ollama-Aufruf nötig)
     if preprocessing.is_category_page(ad):
         logger.info("Anzeige %s als Category-Page gefiltert", ad_id)
-        fallback = dict(postprocessing.EMPTY_EVENT)
-        fallback["confidence_grund"] = "Category-Page gefiltert"
-        return postprocessing.attach_metadata([fallback], ad, "filtered", 0, False)
+        return []
+
+    if preprocessing.is_non_ticket_ad(ad):
+        logger.info("Anzeige %s als Non-Ticket gefiltert", ad_id)
+        return []
 
     context = preprocessing.build_context(ad)
     full_prompt = prompt.build_prompt(context)

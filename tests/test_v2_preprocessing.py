@@ -108,3 +108,51 @@ def test_build_context_default_max_chars_is_6000():
     # Nur der reine Text nach "Beschreibung:\n" darf max 6000 Zeichen haben
     text_part = ctx.split("Beschreibung:\n", 1)[-1]
     assert len(text_part) <= 6000
+
+
+# --- is_non_ticket_ad ---
+
+NON_TICKET_TEXT = (
+    NAV_TEXT +
+    "Nebelfluid/ Fog Fluid\n1220 Wien, 22. Bezirk, Donaustadt\n"
+    "€ 10\nVerkaufspreis\nFlüssigkeit für Nebelmachine\n"
+    "Noch mehr ähnliche Anzeigen\n2x Sitzplatz Foo Fighters\n€ 145"
+)
+
+
+def test_non_ticket_ad_no_event_keywords():
+    from parser.v2.preprocessing import is_non_ticket_ad
+    ad = {"titel": "Nebelfluid/ Fog Fluid", "text_komplett": NON_TICKET_TEXT}
+    assert is_non_ticket_ad(ad) is True
+
+
+def test_ticket_ad_not_flagged_as_non_ticket():
+    from parser.v2.preprocessing import is_non_ticket_ad
+    ad = {
+        "titel": "Rammstein Wien 15.06.2025 - 2x Tickets",
+        "text_komplett": REAL_AD_TEXT,
+    }
+    assert is_non_ticket_ad(ad) is False
+
+
+def test_non_ticket_ignored_similar_ads_section():
+    from parser.v2.preprocessing import is_non_ticket_ad
+    # Similar-ads section has ticket keywords but main body does not
+    ad = {
+        "titel": "Nebelfluid/ Fog Fluid",
+        "text_komplett": NON_TICKET_TEXT,  # contains ticket keywords AFTER marker
+    }
+    assert is_non_ticket_ad(ad) is True
+
+
+def test_ad_with_karten_in_description_not_non_ticket():
+    from parser.v2.preprocessing import is_non_ticket_ad
+    ad = {
+        "titel": "Monti Beton A Tribute to Neil Diamond",
+        "text_komplett": (
+            NAV_TEXT +
+            "Monti Beton\n2 Stk Eintrittskarten je € 40,-\n24.4.26\n"
+            "Noch mehr ähnliche Anzeigen\nFoo Fighters\n€ 145"
+        ),
+    }
+    assert is_non_ticket_ad(ad) is False
