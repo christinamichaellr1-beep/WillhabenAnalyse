@@ -37,7 +37,7 @@ def start_pipeline(
         cmd,
         cwd=project_dir,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.STDOUT,  # merge so log_callback sees both streams
         text=True,
     )
 

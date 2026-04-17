@@ -5,6 +5,7 @@ Aggregates Excel 'Angebote' sheet data into a market analysis summary
 using pandas. Groups by (event_name, event_datum, kategorie) and
 separates Privat vs Haendler sellers.
 """
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -102,8 +103,6 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             ovp = float("nan")
 
         # Marge %: (OVP - mean_preis) / OVP * 100
-        import math
-
         def _marge(avg: float) -> float:
             if math.isnan(ovp) or math.isnan(avg) or ovp == 0:
                 return float("nan")
