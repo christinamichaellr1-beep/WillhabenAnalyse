@@ -250,7 +250,7 @@ if __name__ == "__main__":
         default=None,
         metavar="N",
         dest="max_listings",
-        help="Begrenze die Anzahl der zu parsenden Anzeigen auf N (nur mit --once)",
+        help="Begrenze die Anzahl der zu parsenden Anzeigen auf N",
     )
     args = parser.parse_args()
 

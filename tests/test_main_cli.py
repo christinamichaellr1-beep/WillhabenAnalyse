@@ -59,11 +59,6 @@ def test_max_listings_invalid_type_errors():
 # Unit-Tests für run_pipeline() max_listings ohne echtes Scraping
 # ---------------------------------------------------------------------------
 
-import sys
-from pathlib import Path as _Path
-
-sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
-
 
 def test_run_pipeline_max_listings_truncates(monkeypatch):
     """run_pipeline() soll ads[:max_listings] abschneiden bevor es parst."""
