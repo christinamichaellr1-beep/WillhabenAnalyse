@@ -102,7 +102,7 @@ def run_pipeline(
         _log("Keine Anzeigen – Pipeline abgebrochen.")
         return stats
 
-    if max_listings:
+    if max_listings is not None:
         ads = ads[:max_listings]
         _log(f"--max-listings: auf {max_listings} begrenzt.")
 
