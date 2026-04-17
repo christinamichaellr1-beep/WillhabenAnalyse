@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{PYTHON_PATH}</string>
+    <string>{PROJECT_DIR}/main.py</string>
+    <string>--once</string>
+    <string>--parser-version=v2</string>
+    <string>--model={MODEL}</string>
+    {MAX_LISTINGS_ARG}
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>{HOUR}</integer>
+    <key>Minute</key>
+    <integer>{MINUTE}</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{PROJECT_DIR}/logs/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{PROJECT_DIR}/logs/launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>{PROJECT_DIR}</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
