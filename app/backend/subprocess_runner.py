@@ -8,6 +8,12 @@ import subprocess
 import threading
 from typing import Callable
 
+_ALLOWED_MODELS = frozenset({
+    "gemma3:27b", "gemma4:26b", "gemma4:latest",
+    "gemma3:latest", "llama3.2:latest",
+})
+_ALLOWED_PARSER_VERSIONS = frozenset({"v1", "v2"})
+
 
 def start_pipeline(
     python_path: str,
@@ -23,6 +29,11 @@ def start_pipeline(
     If log_callback given, spawns a daemon thread reading stdout lines and calling log_callback.
     Returns the Popen object.
     """
+    if model not in _ALLOWED_MODELS:
+        raise ValueError(f"Unerlaubtes Modell: {model!r}. Erlaubt: {_ALLOWED_MODELS}")
+    if parser_version not in _ALLOWED_PARSER_VERSIONS:
+        raise ValueError(f"Ungültige Parser-Version: {parser_version!r}. Erlaubt: {_ALLOWED_PARSER_VERSIONS}")
+
     cmd = [
         python_path,
         "main.py",

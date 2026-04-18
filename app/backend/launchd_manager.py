@@ -7,9 +7,6 @@ the WillhabenAnalyse pipeline on macOS.
 import subprocess
 from pathlib import Path
 
-# Path to the plist template relative to this file's location
-_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "launchd.plist.template"
-
 _LAUNCH_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
 
 
@@ -22,23 +19,30 @@ def generate_plist(
     hour: int,
     minute: int,
 ) -> str:
-    """Returns plist XML string by rendering the template at app/templates/launchd.plist.template"""
-    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    """Returns plist XML string built with plistlib — no template injection possible."""
+    import plistlib
 
+    program_args = [
+        python_path,
+        f"{project_dir}/main.py",
+        "--once",
+        "--parser-version=v2",
+        f"--model={model}",
+    ]
     if max_listings is not None:
-        max_listings_arg = f"<string>--max-listings={max_listings}</string>"
-    else:
-        max_listings_arg = ""
+        program_args.append(f"--max-listings={max_listings}")
 
-    return template.format(
-        LABEL=label,
-        PYTHON_PATH=python_path,
-        PROJECT_DIR=project_dir,
-        MODEL=model,
-        MAX_LISTINGS_ARG=max_listings_arg,
-        HOUR=hour,
-        MINUTE=minute,
-    )
+    plist_data = {
+        "Label": label,
+        "ProgramArguments": program_args,
+        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "StandardOutPath": f"{project_dir}/logs/launchd.log",
+        "StandardErrorPath": f"{project_dir}/logs/launchd.log",
+        "WorkingDirectory": project_dir,
+        "RunAtLoad": False,
+    }
+
+    return plistlib.dumps(plist_data, fmt=plistlib.FMT_XML).decode("utf-8")
 
 
 def install_plist(plist_xml: str, label: str) -> tuple[bool, str]:

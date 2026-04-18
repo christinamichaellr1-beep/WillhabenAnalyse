@@ -127,3 +127,20 @@ def test_uninstall_plist_not_found(tmp_path):
         ok, msg = uninstall_plist("com.willhaben.notexist")
         assert ok is False
         assert "not found" in msg.lower() or "Plist not found" in msg
+
+
+def test_generate_plist_injection_in_label_is_safe():
+    """Malicious label value must not inject XML tags (C02 fix)."""
+    kwargs = {**_SAMPLE_KWARGS, "label": "</string><string>/bin/bash"}
+    xml = generate_plist(**kwargs)
+    # plistlib escapes < and > — the injected tag must not appear verbatim
+    assert "</string><string>/bin/bash" not in xml
+    # The label value IS present but safely escaped
+    assert "/bin/bash" in xml or "&lt;" in xml
+
+
+def test_generate_plist_injection_in_python_path_is_safe():
+    """Malicious python_path must not inject extra ProgramArguments (C02 fix)."""
+    kwargs = {**_SAMPLE_KWARGS, "python_path": "</string><string>-c<string>rm -rf /"}
+    xml = generate_plist(**kwargs)
+    assert "rm -rf /" not in xml or "&lt;" in xml

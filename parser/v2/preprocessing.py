@@ -33,6 +33,23 @@ _EVENT_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Phrases that could confuse or hijack the LLM parser
+_INJECTION_PATTERNS = re.compile(
+    r"ignoriere\s+(?:alle\s+)?(?:bisherigen?\s+)?(?:anweisungen?|instruktionen?)|"
+    r"ignore\s+(?:all\s+)?(?:previous\s+)?(?:instructions?)|"
+    r"(?:^|\n)\s*system\s*:",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def sanitize_ad_text(text: str) -> str:
+    """Remove LLM prompt-injection markers from ad text.
+
+    Replaces known injection phrases with a placeholder so the LLM parser
+    cannot be steered by seller-controlled content.
+    """
+    return _INJECTION_PATTERNS.sub("[ENTFERNT]", text)
+
 
 def _extract_main_description(text: str) -> str:
     """Returns the ad's main body text, stripped of nav prefix and similar-ads section."""
@@ -120,4 +137,7 @@ def build_context(ad: dict, max_chars: int = 6000) -> str:
     stripped = strip_nav_prefix(text)
     truncated = stripped[:max_chars]
 
-    return f"Titel: {titel}\nPreis: {preis_roh}\n\nBeschreibung:\n{truncated}"
+    safe_titel = sanitize_ad_text(titel)
+    safe_text = sanitize_ad_text(truncated)
+
+    return f"Titel: {safe_titel}\nPreis: {preis_roh}\n\nBeschreibung:\n{safe_text}"

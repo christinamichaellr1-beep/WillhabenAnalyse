@@ -118,3 +118,27 @@ def test_stop_noop_on_finished_process(tmp_path):
     proc.wait(timeout=5)
     # Should not raise
     stop(proc)
+
+
+def test_start_pipeline_rejects_invalid_model(tmp_path):
+    """start_pipeline raises ValueError for model not in allowlist."""
+    script = tmp_path / "main.py"
+    script.write_text("pass")
+    with pytest.raises(ValueError, match="Unerlaubtes Modell"):
+        start_pipeline(
+            python_path=sys.executable,
+            project_dir=str(tmp_path),
+            model="../../bin/bash",
+        )
+
+
+def test_start_pipeline_rejects_invalid_parser_version(tmp_path):
+    """start_pipeline raises ValueError for parser_version not in allowlist."""
+    script = tmp_path / "main.py"
+    script.write_text("pass")
+    with pytest.raises(ValueError, match="Ungültige Parser-Version"):
+        start_pipeline(
+            python_path=sys.executable,
+            project_dir=str(tmp_path),
+            parser_version="v99; rm -rf /",
+        )
