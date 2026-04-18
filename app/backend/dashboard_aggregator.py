@@ -1,7 +1,7 @@
 """
 dashboard_aggregator.py
 
-Aggregates Excel 'Angebote' sheet data into a market analysis summary
+Aggregates Excel 'Hauptübersicht' sheet data into a market analysis summary
 using pandas. Groups by (event_name, event_datum, kategorie) and
 separates Privat vs Haendler sellers.
 """
@@ -10,6 +10,24 @@ from pathlib import Path
 
 import pandas as pd
 
+
+# Maps Excel display-header names → aggregator snake_case column names.
+# The Excel sheet uses German display names (written by excel_writer.py);
+# the aggregator works with snake_case keys.  load_excel() applies this
+# rename immediately after pd.read_excel so the rest of the module never
+# has to deal with German column names.
+_EXCEL_COLUMN_MAP: dict[str, str] = {
+    "Event-Name":             "event_name",
+    "Event-Datum":            "event_datum",
+    "Venue":                  "venue",
+    "Stadt":                  "stadt",
+    "Kategorie":              "kategorie",
+    "Verkäufertyp":           "anbieter_typ",
+    "Anzahl Karten":          "anzahl_karten",
+    "Angebotspreis gesamt":   "angebotspreis_gesamt",
+    "Angebotspreis pro Karte": "preis_pro_karte",
+    "Originalpreis pro Karte": "originalpreis_pro_karte",
+}
 
 # Column name used to identify seller type in the Excel sheet
 _ANBIETER_TYP_COL = "anbieter_typ"
@@ -20,9 +38,10 @@ _OVP_COL = "originalpreis_pro_karte"
 
 
 def load_excel(path: Path) -> pd.DataFrame:
-    """Reads 'Angebote' sheet from Excel. Returns empty DataFrame if file missing."""
+    """Reads 'Hauptübersicht' sheet from Excel. Returns empty DataFrame if file missing."""
     try:
-        return pd.read_excel(path, sheet_name="Angebote", engine="openpyxl")
+        df = pd.read_excel(path, sheet_name="Hauptübersicht", engine="openpyxl")
+        return df.rename(columns=_EXCEL_COLUMN_MAP)
     except (FileNotFoundError, Exception):
         return pd.DataFrame()
 

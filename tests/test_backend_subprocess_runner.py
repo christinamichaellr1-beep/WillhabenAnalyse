@@ -38,25 +38,15 @@ def test_start_pipeline_returns_popen(tmp_path):
 def test_start_pipeline_with_max_listings_adds_arg(tmp_path):
     """--max-listings argument is forwarded to the subprocess cmd."""
     script = tmp_path / "main.py"
-    # Print argv so we can verify
     script.write_text("import sys; print(' '.join(sys.argv))")
     proc = start_pipeline(
         python_path=_PYTHON,
         project_dir=str(tmp_path),
         max_listings=350,
     )
-    out, _ = proc.communicate(timeout=5)
-    # stdout was captured; but we used PIPE with stderr=STDOUT
-    # out may be None if log_callback not used; read from stdout directly
-    proc2 = subprocess.Popen(
-        [_PYTHON, "main.py", "--once", "--parser-version=v2", "--model=gemma3:27b", "--max-listings=350"],
-        cwd=str(tmp_path),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    output, _ = proc2.communicate(timeout=5)
-    assert "--max-listings=350" in output
+    proc.wait(timeout=5)
+    # Check the actual command that start_pipeline() built (not a separate process)
+    assert "--max-listings=350" in proc.args
 
 
 def test_start_pipeline_log_callback_receives_output(tmp_path):

@@ -125,8 +125,8 @@ class StatusTab(_TK_BASE):  # type: ignore[misc]
         avg_str = f"{avg:.0f} ms" if avg is not None else "—"
         self._duration_label.config(text=f"Ø Dauer: {avg_str}")
 
-        # Errors
-        errors = status.get("errors", 0)
+        # Errors (StatusWriter writes "errors_count")
+        errors = status.get("errors_count", 0)
         self._errors_label.config(text=f"Fehler: {errors}")
 
         # Last error text
@@ -202,6 +202,6 @@ class StatusTab(_TK_BASE):  # type: ignore[misc]
             "status_text": st,
             "status_color": color,
             "avg_duration": avg_str,
-            "errors": str(status.get("errors", 0)),
+            "errors": str(status.get("errors_count", 0)),
             "last_error": status.get("last_error", ""),
         }

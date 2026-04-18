@@ -51,6 +51,45 @@ def test_load_excel_returns_empty_on_wrong_sheet(tmp_path):
     assert result.empty
 
 
+def test_load_excel_reads_hauptuebersicht_sheet(tmp_path):
+    """C08 regression: load_excel must read sheet 'Hauptübersicht', not 'Angebote'."""
+    import openpyxl
+    path = tmp_path / "test.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hauptübersicht"
+    ws.append(["Event-Name", "Event-Datum", "Verkäufertyp"])
+    ws.append(["Linkin Park", "2026-06-09", "Privat"])
+    wb.save(path)
+    result = load_excel(path)
+    assert not result.empty
+    assert len(result) == 1
+
+
+def test_load_excel_renames_columns(tmp_path):
+    """C09 regression: load_excel must rename German display headers to snake_case."""
+    import openpyxl
+    path = tmp_path / "test.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hauptübersicht"
+    ws.append(["Event-Name", "Event-Datum", "Verkäufertyp",
+               "Anzahl Karten", "Angebotspreis gesamt",
+               "Angebotspreis pro Karte", "Originalpreis pro Karte",
+               "Venue", "Stadt", "Kategorie"])
+    ws.append(["Linkin Park", "2026-06-09", "Händler",
+               2, 200.0, 100.0, 89.9,
+               "Ernst Happel", "Wien", "Stehplatz"])
+    wb.save(path)
+    result = load_excel(path)
+    assert "event_name" in result.columns
+    assert "anbieter_typ" in result.columns
+    assert "preis_pro_karte" in result.columns
+    assert "originalpreis_pro_karte" in result.columns
+    assert "Verkäufertyp" not in result.columns
+    assert "Event-Name" not in result.columns
+
+
 # ---------------------------------------------------------------------------
 # Tests: aggregate
 # ---------------------------------------------------------------------------

@@ -38,12 +38,13 @@ def test_refresh_with_none_status():
 
 def test_status_to_display_running():
     from app.tabs.status import StatusTab
+    # Use real StatusWriter field name "errors_count" (not "errors") — C05 fix
     status = {
         "status": "running",
         "current": 42,
         "total": 350,
         "model": "gemma3:27b",
-        "errors": 1,
+        "errors_count": 1,
         "last_error": "some error",
         "last_10_durations": [100, 200, 300],
     }
@@ -67,7 +68,7 @@ def test_status_to_display_error():
         "status": "error",
         "current": 5,
         "total": 100,
-        "errors": 3,
+        "errors_count": 3,
         "last_10_durations": [],
     }
     result = StatusTab.status_to_display(status)
@@ -85,7 +86,7 @@ def test_status_to_display_done():
         "status": "done",
         "current": 100,
         "total": 100,
-        "errors": 0,
+        "errors_count": 0,
         "last_10_durations": [500],
     }
     result = StatusTab.status_to_display(status)
