@@ -97,10 +97,19 @@ class ZeitplanTab(_TK_BASE):  # type: ignore[misc]
         )
         self._update_status_label()
 
+        # ---- Scraping-Tiefe ----
+        ttk.Label(self, text="Scraping-Tiefe (Tage):").grid(
+            row=7, column=0, sticky="w", padx=15, pady=5
+        )
+        self._max_age_var = tk.StringVar(value=str(self.config_data.get("max_age_days", 1)))
+        ttk.Spinbox(self, from_=1, to=30, textvariable=self._max_age_var, width=6).grid(
+            row=7, column=1, sticky="w", padx=5, pady=5
+        )
+
         # ---- Save button ----
         ttk.Button(
             self, text="Einstellungen speichern", command=self._save_settings
-        ).grid(row=7, column=0, columnspan=3, sticky="w", padx=15, pady=(10, 5))
+        ).grid(row=8, column=0, columnspan=3, sticky="w", padx=15, pady=(10, 5))
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -175,6 +184,11 @@ class ZeitplanTab(_TK_BASE):  # type: ignore[misc]
         self.config_data["launchd"]["minute"] = minute
         self.config_data.setdefault("schedule", {})
         self.config_data["schedule"]["enabled"] = self._enabled_var.get()
+        try:
+            self.config_data["max_age_days"] = int(self._max_age_var.get())
+        except ValueError:
+            messagebox.showerror("Fehler", "Ungültige Scraping-Tiefe.")
+            return
         self.save_config_fn(self.config_data)
         messagebox.showinfo("Gespeichert", "Zeitplan-Einstellungen wurden gespeichert.")
 
