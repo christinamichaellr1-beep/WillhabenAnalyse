@@ -1,21 +1,25 @@
 """
-WillhabenAnalyse GUI – tkinter, 5 Tabs.
+WillhabenAnalyse GUI – tkinter, 7 Tabs (v2.1).
 Speichert Einstellungen in config.json.
 """
 import json
-import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox
 from pathlib import Path
 import datetime
+
+from app.tabs.engine import EngineTab
+from app.tabs.zeitplan import ZeitplanTab
+from app.tabs.status import StatusTab
+from app.tabs.dashboard import DashboardTab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_CONFIG = {
     "schedule": {
+        # Kept for main.py daemon mode — GUI no longer shows schedule widgets
         "scrape_interval_minutes": 360,
-        "enabled": False,
     },
     # Such-URL-Templates: {event} wird durch den Event-Namen ersetzt
     "ovp_search_urls": [
@@ -51,7 +55,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("WillhabenAnalyse")
-        self.geometry("900x650")
+        self.geometry("900x680")
         self.resizable(True, True)
         self.config_data = load_config()
         self._build_ui()
@@ -60,77 +64,35 @@ class App(tk.Tk):
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.tab_schedule  = ttk.Frame(notebook)
+        # ---- New tabs from app/tabs/ ----
+        tab_engine = EngineTab(notebook, self.config_data, save_config, BASE_DIR)
+        tab_engine.build()
+        notebook.add(tab_engine, text="Engine")
+
+        tab_zeitplan = ZeitplanTab(notebook, self.config_data, save_config, BASE_DIR)
+        tab_zeitplan.build()
+        notebook.add(tab_zeitplan, text="Zeitplan")
+
+        tab_status = StatusTab(notebook, self.config_data, save_config, BASE_DIR)
+        tab_status.build()
+        notebook.add(tab_status, text="Status")
+
+        tab_dashboard = DashboardTab(notebook, self.config_data, save_config, BASE_DIR)
+        tab_dashboard.build()
+        notebook.add(tab_dashboard, text="Dashboard")
+
+        # ---- Existing tabs (unchanged logic, now plain ttk.Frame in notebook) ----
         self.tab_providers = ttk.Frame(notebook)
-        self.tab_watchlist = ttk.Frame(notebook)
-        self.tab_export    = ttk.Frame(notebook)
-        self.tab_log       = ttk.Frame(notebook)
-
-        notebook.add(self.tab_schedule,  text="Zeitplan")
         notebook.add(self.tab_providers, text="Anbieter (OVP)")
-        notebook.add(self.tab_watchlist, text="Watchlist")
-        notebook.add(self.tab_export,    text="Export")
-        notebook.add(self.tab_log,       text="Log")
-
-        self._build_schedule_tab()
         self._build_providers_tab()
+
+        self.tab_watchlist = ttk.Frame(notebook)
+        notebook.add(self.tab_watchlist, text="Watchlist")
         self._build_watchlist_tab()
-        self._build_export_tab()
+
+        self.tab_log = ttk.Frame(notebook)
+        notebook.add(self.tab_log, text="Log")
         self._build_log_tab()
-
-    # ---- Tab: Zeitplan ----
-
-    def _build_schedule_tab(self):
-        f = self.tab_schedule
-        sched = self.config_data.get("schedule", DEFAULT_CONFIG["schedule"])
-
-        ttk.Label(f, text="Automatischer Zeitplan", font=("", 13, "bold")).grid(
-            row=0, column=0, columnspan=2, pady=(15, 10), padx=15, sticky="w")
-
-        ttk.Label(f, text="Scraping-Intervall (Minuten):").grid(row=1, column=0, sticky="w", padx=15, pady=5)
-        self.scrape_interval = tk.IntVar(value=sched.get("scrape_interval_minutes", 120))
-        ttk.Spinbox(f, from_=15, to=1440, textvariable=self.scrape_interval, width=8).grid(
-            row=1, column=1, sticky="w", padx=5)
-
-        ttk.Label(f, text="OVP-Check-Intervall (Minuten):").grid(row=2, column=0, sticky="w", padx=15, pady=5)
-        self.ovp_interval = tk.IntVar(value=sched.get("ovp_interval_minutes", 60))
-        ttk.Spinbox(f, from_=10, to=720, textvariable=self.ovp_interval, width=8).grid(
-            row=2, column=1, sticky="w", padx=5)
-
-        self.schedule_enabled = tk.BooleanVar(value=sched.get("enabled", False))
-        ttk.Checkbutton(f, text="Scheduling aktiv", variable=self.schedule_enabled).grid(
-            row=3, column=0, columnspan=2, sticky="w", padx=15, pady=10)
-
-        btn_frame = ttk.Frame(f)
-        btn_frame.grid(row=4, column=0, columnspan=2, sticky="w", padx=15, pady=5)
-        ttk.Button(btn_frame, text="Jetzt scrapen", command=self._run_scrape_now).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Einstellungen speichern", command=self._save_schedule).pack(side="left", padx=5)
-
-        self.status_label = ttk.Label(f, text="", foreground="green")
-        self.status_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=15)
-
-    def _save_schedule(self):
-        self.config_data["schedule"] = {
-            "scrape_interval_minutes": self.scrape_interval.get(),
-            "ovp_interval_minutes": self.ovp_interval.get(),
-            "enabled": self.schedule_enabled.get(),
-        }
-        save_config(self.config_data)
-        self.status_label.config(text="Gespeichert.", foreground="green")
-
-    def _run_scrape_now(self):
-        self.status_label.config(text="Starte Pipeline …", foreground="blue")
-        def _run():
-            try:
-                import sys
-                sys.path.insert(0, str(BASE_DIR))
-                import main as m
-                m.run_pipeline(log_callback=self._append_log)
-                self.status_label.config(text="Pipeline fertig.", foreground="green")
-            except Exception as exc:
-                self.status_label.config(text=f"Fehler: {exc}", foreground="red")
-                self._append_log(f"FEHLER: {exc}")
-        threading.Thread(target=_run, daemon=True).start()
 
     # ---- Tab: Anbieter ----
 
@@ -222,52 +184,6 @@ class App(tk.Tk):
         self.config_data["watchlist"] = watchlist
         save_config(self.config_data)
         messagebox.showinfo("Gespeichert", f"{len(watchlist)} Watchlist-Einträge gespeichert.")
-
-    # ---- Tab: Export ----
-
-    def _build_export_tab(self):
-        f = self.tab_export
-        ttk.Label(f, text="Excel-Export Einstellungen", font=("", 13, "bold")).pack(
-            anchor="w", padx=15, pady=(15, 10))
-
-        path_frame = ttk.Frame(f)
-        path_frame.pack(anchor="w", padx=15, pady=5, fill="x")
-        ttk.Label(path_frame, text="Export-Pfad:").pack(side="left")
-        self.export_path_var = tk.StringVar(value=self.config_data.get("export_path", ""))
-        ttk.Entry(path_frame, textvariable=self.export_path_var, width=50).pack(side="left", padx=5)
-        ttk.Button(path_frame, text="…", command=self._browse_export_path, width=3).pack(side="left")
-
-        ttk.Button(f, text="Speichern", command=self._save_export).pack(anchor="w", padx=15, pady=10)
-        ttk.Button(f, text="Abgelaufene Events archivieren", command=self._archive_now).pack(
-            anchor="w", padx=15, pady=5)
-
-        self.export_status = ttk.Label(f, text="", foreground="green")
-        self.export_status.pack(anchor="w", padx=15)
-
-    def _browse_export_path(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel", "*.xlsx")],
-            initialfile="willhaben_analyse.xlsx",
-        )
-        if path:
-            self.export_path_var.set(path)
-
-    def _save_export(self):
-        self.config_data["export_path"] = self.export_path_var.get()
-        save_config(self.config_data)
-        self.export_status.config(text="Gespeichert.", foreground="green")
-
-    def _archive_now(self):
-        try:
-            import sys
-            sys.path.insert(0, str(BASE_DIR))
-            from export.excel_writer import archive_expired
-            path = Path(self.export_path_var.get())
-            n = archive_expired(path)
-            self.export_status.config(text=f"{n} Events archiviert.", foreground="green")
-        except Exception as exc:
-            self.export_status.config(text=f"Fehler: {exc}", foreground="red")
 
     # ---- Tab: Log ----
 
