@@ -113,23 +113,14 @@ f6989fa feat(parser): Phase A — status_writer, --max-listings, pipeline integr
 
 **Befehl:**
 ```bash
-python main.py --parser-version=v2 --model=gemma3:27b --max-listings=350 --once
+nohup .venv/bin/python3 main.py --parser-version=v2 --model=gemma3:27b --max-listings=350 --once \
+  > logs/testlauf_v21_350.log 2>&1 &
 ```
 
-**Ergebnis:** Exit 0, keine Fehler
+**Status:** 🔄 **LÄUFT** (PID 57209, gestartet 2026-04-18)  
+Log: `logs/testlauf_v21_350.log`
 
-```json
-{
-  "scraped": 0,
-  "parsed_events": 0,
-  "ovp_checked": 0,
-  "excel_inserted": 0,
-  "excel_updated": 0,
-  "errors": []
-}
-```
-
-**Hinweis:** 0 Anzeigen wegen "Erster Lauf erkannt → max_age_days=3" im Worktree (frisches data/-Verzeichnis ohne bestehenden raw_cache). Die Pipeline, der Parser und der Status-Writer liefen fehlerfrei durch. Bei einem echten Nachtlauf mit befülltem raw_cache werden die 350 Anzeigen aus dem Cache gelesen und geparst.
+**Vorlauf-Check (Worktree, Exit 0):** Pipeline, Parser und Status-Writer liefen fehlerfrei; 0 Anzeigen wegen frischem Worktree ohne raw_cache (Scraper-Cutoff max_age_days=3). Auf main mit vorhandenem raw_cache werden bis zu 350 Anzeigen verarbeitet.
 
 ---
 
