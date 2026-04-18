@@ -25,7 +25,7 @@ RAW_CACHE.mkdir(parents=True, exist_ok=True)
 TARGET_URL = (
     "https://www.willhaben.at/iad/kaufen-und-verkaufen/marktplatz/"
     "tickets-gutscheine/konzerte-musikfestivals-6702"
-    "?rows=90&isNavigation=true&areaId=900&sort=5"
+    "?rows=90&isNavigation=true&areaId=900&sort=3"
 )
 MAX_LIST_PAGES = 5
 USER_AGENT = (
@@ -323,15 +323,16 @@ async def scrape(
     max_pages: int = MAX_LIST_PAGES,
     headless: bool = True,
     max_age_days: int | None = None,
+    max_listings: int | None = None,
 ) -> list[dict]:
     """
-    Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen.
+    Scrapt Willhaben Ticket-Marktplatz, sortiert nach neuesten Anzeigen (sort=3).
 
-    max_age_days: Maximales Alter einer Anzeige in Tagen. Sobald eine Anzeige
-                  älter ist, wird der Scraping-Lauf gestoppt (da nach Datum
-                  sortiert sind alle folgenden noch älter).
-                  None = Wert aus config.json oder Auto-Detect (3 beim ersten
-                  Lauf, 1 bei Folgeläufen).
+    max_age_days:  Maximales Alter einer Anzeige in Tagen.
+                   None = Wert aus config.json oder Auto-Detect.
+    max_listings:  Sobald diese Anzahl qualifizierender Anzeigen gesammelt ist,
+                   stoppen sowohl Übersichtsseiten- als auch Detailseiten-Loop.
+                   Übersichtsseiten werden auf ceil(max_listings/90)+1 begrenzt.
 
     Bereits gecachte Anzeigen (raw_cache/{id}.json existiert) werden
     übersprungen und nicht erneut besucht.
@@ -367,10 +368,12 @@ async def scrape(
         page.set_default_timeout(90000)
 
         all_ad_urls: list[str] = []
+        # Mit sort=3 (neueste zuerst) reichen wenige Seiten für max_listings Treffer.
+        pages_to_load = min(max_pages, (max_listings // 90) + 2) if max_listings else max_pages
 
         try:
             # ---- Übersichtsseiten ----
-            for page_num in range(1, max_pages + 1):
+            for page_num in range(1, pages_to_load + 1):
                 url = f"{TARGET_URL}&page={page_num}"
                 _log(f"Übersicht Seite {page_num}: {url}")
                 loaded = False
@@ -423,21 +426,23 @@ async def scrape(
                         await page.wait_for_timeout(1200)
                         ad = await _parse_detail_page(page, ad_url)
 
-                        # Alters-Check: Anzeige zu alt → Lauf stoppen
+                        # Alters-Check: Anzeige zu alt → überspringen
                         if ad.get("eingestellt_am"):
                             ad_date = datetime.date.fromisoformat(ad["eingestellt_am"])
                             if ad_date < cutoff_date:
                                 _log(
                                     f"  ({idx}) Anzeige {ad_id} vom {ad_date} "
-                                    f"ist älter als cutoff {cutoff_date} → stoppe."
+                                    f"ist älter als cutoff {cutoff_date} → übersprungen."
                                 )
-                                stop_scraping = True
                                 ok = True
                                 break
 
                         _save_raw_cache(ad)
                         results.append(ad)
                         ok = True
+                        if max_listings is not None and len(results) >= max_listings:
+                            _log(f"  → max_listings={max_listings} erreicht – stoppe.")
+                            stop_scraping = True
                         break
                     except Exception as exc:
                         _log(f"  Fehler Detailseite Versuch {attempt}/2: {exc}")

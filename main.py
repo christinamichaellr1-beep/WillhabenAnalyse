@@ -90,7 +90,7 @@ def run_pipeline(
     _log("=== SCHRITT 1: Scraping ===")
     try:
         from scraper.willhaben_scraper import scrape
-        ads = asyncio.run(scrape())
+        ads = asyncio.run(scrape(max_listings=max_listings))
         stats["scraped"] = len(ads)
         _log(f"Scraping: {len(ads)} Anzeigen gefunden.")
     except Exception as exc:
