@@ -126,7 +126,7 @@ def validate(raw_events: list[dict]) -> list[dict]:
     Pydantic-ähnliche Validierung ohne harten Crash:
     Ungültige Felder werden auf sichere Defaults gesetzt.
     """
-    return [_validate_one(e) for e in raw_events]
+    return [_check_preis_pro_karte_plausibility(_validate_one(e)) for e in raw_events]
 
 
 def _validate_one(obj: Any) -> dict:
@@ -172,6 +172,47 @@ def _validate_one(obj: Any) -> dict:
         result["kategorie"] = "Unbekannt"
 
     return result
+
+
+def _check_preis_pro_karte_plausibility(event: dict) -> dict:
+    gesamt = event.get("angebotspreis_gesamt")
+    anzahl = event.get("anzahl_karten")
+    pipc = event.get("preis_ist_pro_karte")
+    ovp = event.get("originalpreis_pro_karte")
+
+    if not (pipc is True
+            and isinstance(anzahl, int) and anzahl > 1
+            and isinstance(gesamt, (int, float)) and gesamt > 300):
+        return event
+
+    implied_per_card = gesamt / anzahl
+    suspicious = False
+    reason = ""
+
+    if ovp and ovp > 0:
+        if implied_per_card <= ovp * 2.0:
+            suspicious = True
+            reason = (
+                f"preis_ist_pro_karte=True aber {gesamt:.0f}€/{anzahl} Karten"
+                f" = {implied_per_card:.0f}€ liegt nahe am OVP ({ovp:.0f}€)"
+                " — wahrscheinlich Gesamtpreis"
+            )
+    else:
+        if implied_per_card < 150.0:
+            suspicious = True
+            reason = (
+                f"preis_ist_pro_karte=True aber {gesamt:.0f}€/{anzahl} Karten"
+                f" = {implied_per_card:.0f}€ — wahrscheinlich Gesamtpreis"
+            )
+
+    if suspicious:
+        result = dict(event)
+        result["confidence"] = "niedrig"
+        result["confidence_grund"] = reason
+        logger.warning("C10 Plausibilitätsprüfung: %s", reason)
+        return result
+
+    return event
 
 
 def attach_metadata(

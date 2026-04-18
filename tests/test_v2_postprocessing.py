@@ -142,3 +142,92 @@ def test_attach_metadata_preserves_event_fields():
                "kategorie": "Stehplatz", "confidence_grund": None}]
     result = attach_metadata(events, {"id": "1"}, "gemma3:27b", 100, False)
     assert result[0]["event_name"] == "Coldplay"
+
+
+# --- _check_preis_pro_karte_plausibility (C10) ---
+
+def test_plausibility_flags_when_implied_per_card_near_ovp():
+    """700€/7 Karten = 100€/Karte ≈ OVP 89€ → suspicious."""
+    from parser.v2.postprocessing import validate
+    raw = [{
+        "event_name": "Test",
+        "angebotspreis_gesamt": 700.0,
+        "preis_ist_pro_karte": True,
+        "anzahl_karten": 7,
+        "originalpreis_pro_karte": 89.0,
+        "confidence": "hoch",
+        "confidence_grund": None,
+        "kategorie": "Stehplatz",
+    }]
+    result = validate(raw)
+    assert result[0]["confidence"] == "niedrig"
+    assert "wahrscheinlich Gesamtpreis" in result[0]["confidence_grund"]
+
+
+def test_plausibility_flags_without_ovp_when_implied_cheap():
+    """500€/5 Karten = 100€/Karte < 150 threshold, no OVP → suspicious."""
+    from parser.v2.postprocessing import validate
+    raw = [{
+        "event_name": "Test",
+        "angebotspreis_gesamt": 500.0,
+        "preis_ist_pro_karte": True,
+        "anzahl_karten": 5,
+        "originalpreis_pro_karte": None,
+        "confidence": "hoch",
+        "confidence_grund": None,
+        "kategorie": "Stehplatz",
+    }]
+    result = validate(raw)
+    assert result[0]["confidence"] == "niedrig"
+
+
+def test_plausibility_does_not_flag_when_implied_above_ovp_threshold():
+    """800€/2 Karten = 400€/Karte > OVP*2(=200€) → legitimately high, not flagged."""
+    from parser.v2.postprocessing import validate
+    raw = [{
+        "event_name": "Test",
+        "angebotspreis_gesamt": 800.0,
+        "preis_ist_pro_karte": True,
+        "anzahl_karten": 2,
+        "originalpreis_pro_karte": 89.0,
+        "confidence": "hoch",
+        "confidence_grund": None,
+        "kategorie": "Stehplatz",
+    }]
+    result = validate(raw)
+    # 800/2=400, OVP*2=178. 400 > 178 → NOT suspicious
+    assert result[0]["confidence"] == "hoch"
+
+
+def test_plausibility_skips_when_anzahl_is_one():
+    """Single ticket: no plausibility check needed."""
+    from parser.v2.postprocessing import validate
+    raw = [{
+        "event_name": "Test",
+        "angebotspreis_gesamt": 700.0,
+        "preis_ist_pro_karte": True,
+        "anzahl_karten": 1,
+        "originalpreis_pro_karte": 89.0,
+        "confidence": "hoch",
+        "confidence_grund": None,
+        "kategorie": "Stehplatz",
+    }]
+    result = validate(raw)
+    assert result[0]["confidence"] == "hoch"
+
+
+def test_plausibility_skips_when_preis_ist_pro_karte_false():
+    """preis_ist_pro_karte=False: check doesn't apply."""
+    from parser.v2.postprocessing import validate
+    raw = [{
+        "event_name": "Test",
+        "angebotspreis_gesamt": 700.0,
+        "preis_ist_pro_karte": False,
+        "anzahl_karten": 7,
+        "originalpreis_pro_karte": 89.0,
+        "confidence": "hoch",
+        "confidence_grund": None,
+        "kategorie": "Stehplatz",
+    }]
+    result = validate(raw)
+    assert result[0]["confidence"] == "hoch"
