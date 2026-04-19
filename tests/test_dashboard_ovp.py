@@ -75,3 +75,20 @@ def test_ovp_status_fehlt():
     result = aggregate(_make_df(rows))
     assert result.iloc[0]["OVP_Status"] == "fehlt ❌"
     assert math.isnan(result.iloc[0]["OVP"])
+
+
+def test_ovp_status_konflikt_gilt_als_manuell():
+    """Konflikt (≥5% Abweichung): manueller OVP gewinnt, Status = 'manuell gepflegt ✓'."""
+    rows = [
+        {
+            "event_name": "Test", "event_datum": "2026-10-01", "kategorie": "GA",
+            "anbieter_typ": "Privat", "preis_pro_karte": 90.0,
+            "angebotspreis_gesamt": 90.0, "anzahl_karten": 1,
+            "originalpreis_pro_karte": 100.0,  # extrahiert
+            "ovp_manuell": 80.0,               # manuell — 20% Abweichung = Konflikt
+            "confidence": "hoch",
+        }
+    ]
+    result = aggregate(_make_df(rows))
+    assert result.iloc[0]["OVP"] == 80.0          # manuell gewinnt
+    assert result.iloc[0]["OVP_Status"] == "manuell gepflegt ✓"

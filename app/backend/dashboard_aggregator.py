@@ -90,6 +90,10 @@ def _ovp_final_fuer_gruppe(grp: "pd.DataFrame") -> "tuple[float, str]":
     """Computes final OVP for a group: prefers manual OVP over extracted.
 
     Returns (ovp_final as float or nan, ovp_status_label).
+    Status labels:
+      "fehlt ❌"            — no OVP from either source
+      "manuell gepflegt ✓" — manual present (both_agree, manuell, or konflikt: manual still wins)
+      "nur extrahiert ⚠"   — only extracted OVP available
     """
     from export.ovp_logic import berechne_finaler_ovp as _berechne
 
@@ -102,14 +106,10 @@ def _ovp_final_fuer_gruppe(grp: "pd.DataFrame") -> "tuple[float, str]":
     ovp_final, quelle = _berechne(ovp_ext, ovp_man)
 
     if ovp_final is None:
-        label = "fehlt ❌"
-        return float("nan"), label
-    elif quelle == "manuell" or quelle == "beide_übereinstimmend":
-        label = "manuell gepflegt ✓"
-    else:
-        label = "nur extrahiert ⚠"
-
-    return float(ovp_final), label
+        return float("nan"), "fehlt ❌"
+    if quelle in {"manuell", "beide_übereinstimmend", "konflikt"}:
+        return float(ovp_final), "manuell gepflegt ✓"
+    return float(ovp_final), "nur extrahiert ⚠"
 
 
 def _safe_mean(series: "pd.Series") -> float | None:
