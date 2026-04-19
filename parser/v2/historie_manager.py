@@ -21,6 +21,15 @@ HISTORY_FIELDS = frozenset({
 # OVP-Felder — einmal gesetzt, nie durch Scrape überschreiben
 OVP_PROTECTED = frozenset({"originalpreis_pro_karte", "ovp_quelle", "ausverkauft"})
 
+# Felder, die Michael manuell pflegt — dürfen durch Parser/Scraper nie überschrieben werden
+MANUELLE_SPALTEN: frozenset[str] = frozenset({
+    "ovp_manuell",
+    "ovp_anbieter_link",
+    "ovp_final_quelle",
+    "ovp_manuell_eingetragen_am",
+    "ovp_notiz",
+})
+
 INAKTIV_GRACE_DAYS = 21
 _PRICE_HISTORY_DAYS = 7
 
@@ -35,7 +44,7 @@ def merge_scrape_mit_historie(
     Gibt neues dict zurück — mutiert keine Inputs.
     """
     merged = existing.copy()
-    skip = HISTORY_FIELDS | OVP_PROTECTED
+    skip = HISTORY_FIELDS | OVP_PROTECTED | MANUELLE_SPALTEN
 
     for field, value in new_event.items():
         if field not in skip:
@@ -50,6 +59,19 @@ def merge_scrape_mit_historie(
         merged = update_preis_mit_progression(merged, float(new_preis), scan_datum)
 
     return merged
+
+
+def update_bestehende_zeile(existing: dict, updates: dict) -> dict:
+    """Applies partial updates to an existing row, never overwriting MANUELLE_SPALTEN.
+
+    Use for non-scrape updates (e.g. verification results, computed fields).
+    Returns new dict — does not mutate inputs.
+    """
+    result = existing.copy()
+    for field, value in updates.items():
+        if field not in MANUELLE_SPALTEN:
+            result[field] = value
+    return result
 
 
 def update_preis_mit_progression(
