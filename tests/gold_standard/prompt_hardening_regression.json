@@ -1,0 +1,604 @@
+{
+  "version": "1.0",
+  "beschreibung": "Gold Standard für Prompt-Hardening Stage 2 — 22 Testfälle",
+  "cases": [
+    {
+      "id": "GS-001",
+      "beschreibung": "Taylor Swift Stehplatz, OVP explizit — Privatverkauf",
+      "tags": ["privatverkauf", "ovp"],
+      "input": {
+        "titel": "Taylor Swift Eras Tour Wien 2026 – 2x Stehplatz Golden Circle",
+        "preis_eur": 700.0,
+        "beschreibung": "Verkaufe 2 Golden Circle Stehplatz-Tickets für Taylor Swift am 12.07.2026 im Ernst-Happel-Stadion Wien. Originalpreis war je 149,90€. Muss leider absagen. Beide zusammen 700€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Taylor Swift Eras Tour",
+          "event_datum": "2026-07-12",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 700.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 149.9,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-002",
+      "beschreibung": "Adele Tribute Show — K2 Regel, confidence mittel",
+      "tags": ["tribute", "k2"],
+      "input": {
+        "titel": "Adele Tribute Show Wien – 1x VIP Ticket",
+        "preis_eur": 85.0,
+        "beschreibung": "1 VIP Ticket für \"The Adele Tribute Show\" am 03.05.2026, Wiener Stadthalle. Tribute Band, kein echter Auftritt. OVP 65€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Adele Tribute Show",
+          "event_datum": "2026-05-03",
+          "venue": "Wiener Stadthalle",
+          "stadt": "Wien",
+          "kategorie": "VIP",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 85.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 65.0,
+          "confidence": "mittel",
+          "confidence_grund": "Tribute-Show, kein Originalpreis bekannt"
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-003",
+      "beschreibung": "Kendrick Lamar — K1 Label pgLang nicht als Event-Name",
+      "tags": ["k1_label"],
+      "input": {
+        "titel": "pgLang / OVO Sound präsentiert Kendrick Lamar – Wien 2026",
+        "preis_eur": 280.0,
+        "beschreibung": "1 Ticket für Kendrick Lamar \"Grand National Tour\" am 15.06.2026. Gasometer Wien. Stehplatz. Preis pro Karte 280€. OVP laut Ticket 89,90€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Kendrick Lamar",
+          "event_datum": "2026-06-15",
+          "venue": "Gasometer Wien",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 280.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 89.9,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-004",
+      "beschreibung": "Zuckerwatte Festival — Festival-Name ist Event, nicht Venue",
+      "tags": ["festival"],
+      "input": {
+        "titel": "Zuckerwatte Festival 2026 – 2x Tagesticket Samstag",
+        "preis_eur": 130.0,
+        "beschreibung": "Verkaufe 2 Samstag-Tagestickets für das Zuckerwatte Festival 2026, Stadtpark Wien, 04.07.2026. Damals 55€ pro Stück. Beide zusammen 130€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Zuckerwatte Festival 2026",
+          "event_datum": "2026-07-04",
+          "venue": "Stadtpark Wien",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 130.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 55.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-005",
+      "beschreibung": "Skinshape Gasometer — K1 Venue-Trennung + K3 Kategorie-Ableitung",
+      "tags": ["k1_venue", "k3_kategorie"],
+      "input": {
+        "titel": "Skinshape Wien – Gasometer – 1x Ticket",
+        "preis_eur": 45.0,
+        "beschreibung": "1 Ticket für Skinshape Live am 22.09.2026 im Gasometer Wien. Kein Sitzplatz, stehend. Originalpreis 29€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Skinshape",
+          "event_datum": "2026-09-22",
+          "venue": "Gasometer Wien",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 45.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 29.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-006",
+      "beschreibung": "Böhse Onkelz — Datum in der Vergangenheit, confidence mittel",
+      "tags": ["date_past", "confidence_mittel"],
+      "input": {
+        "titel": "Böhse Onkelz – Hockenheimring 2025 – 2 Tickets",
+        "preis_eur": 200.0,
+        "beschreibung": "2 Stehplatz Tickets für Böhse Onkelz am 21.06.2025 Hockenheimring. Originalpreis je 79€. Verkaufe beide für 200€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Böhse Onkelz",
+          "event_datum": "2025-06-21",
+          "venue": "Hockenheimring",
+          "stadt": null,
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 200.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 79.0,
+          "confidence": "mittel",
+          "confidence_grund": "Eventdatum liegt in der Vergangenheit, möglicher Jahresfehler"
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-007",
+      "beschreibung": "Ed Sheeran — 2 Ticket-Kategorien → 2 Objekte im events-Array",
+      "tags": ["multi_kategorie", "haendler"],
+      "input": {
+        "titel": "Ed Sheeran Wien 2026 – Sitzplatz & VIP verfügbar",
+        "preis_eur": 250.0,
+        "beschreibung": "Ed Sheeran \"Mathematics Tour\" Wien 20.08.2026, Ernst-Happel-Stadion.\n1) Sitzplatz Tribüne – Preis pro Karte EUR 250,- (OVP 139€)\n2) VIP Hospitality Package – Preis pro Karte EUR 450,- (OVP 299€)"
+      },
+      "expected_events": [
+        {
+          "event_name": "Ed Sheeran",
+          "event_datum": "2026-08-20",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "Sitzplatz",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 139.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        },
+        {
+          "event_name": "Ed Sheeran",
+          "event_datum": "2026-08-20",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "VIP",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 299.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-008",
+      "beschreibung": "Händler, 1 Kategorie, Preis pro Karte — angebotspreis_gesamt null",
+      "tags": ["haendler"],
+      "input": {
+        "titel": "Billie Eilish Wien 2026 – Stehplatz – Preis pro Karte",
+        "preis_eur": 175.0,
+        "beschreibung": "Billie Eilish \"Hit Me Hard and Soft Tour\" am 18.03.2026, Wiener Stadthalle. Stehplatz – Preis pro Karte 175€. OVP 89,90€. Verschiedene Mengen verfügbar."
+      },
+      "expected_events": [
+        {
+          "event_name": "Billie Eilish",
+          "event_datum": "2026-03-18",
+          "venue": "Wiener Stadthalle",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 89.9,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-009",
+      "beschreibung": "Privatverkauf, kein Datum → confidence mittel, is_valid false wegen fehlendem Datum",
+      "tags": ["missing_datum"],
+      "input": {
+        "titel": "2x Konzerttickets Stefanie Heinzmann",
+        "preis_eur": 70.0,
+        "beschreibung": "Verkaufe 2 Tickets für Stefanie Heinzmann. Preis 35€ pro Stück. Beide zusammen 70€. Veranstaltungsort noch unbekannt."
+      },
+      "expected_events": [
+        {
+          "event_name": "Stefanie Heinzmann",
+          "event_datum": null,
+          "venue": null,
+          "stadt": null,
+          "kategorie": "Unbekannt",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 70.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 35.0,
+          "confidence": "mittel",
+          "confidence_grund": "Eventdatum fehlt"
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-010",
+      "beschreibung": "Mehrere verschiedene Events in einer Anzeige → MEHRERE, confidence niedrig",
+      "tags": ["multi_event"],
+      "input": {
+        "titel": "Verschiedene Konzerttickets abzugeben – Rammstein, Coldplay, Billie Eilish",
+        "preis_eur": 150.0,
+        "beschreibung": "Biete verschiedene Tickets an: Rammstein Wien 200€, Coldplay Graz 120€, Billie Eilish Linz 150€. Alles Originalpreise. Bitte bei Interesse melden welches Ticket."
+      },
+      "expected_events": [
+        {
+          "event_name": "MEHRERE",
+          "event_datum": null,
+          "venue": null,
+          "stadt": null,
+          "kategorie": "Unbekannt",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": null,
+          "originalpreis_pro_karte": null,
+          "confidence": "niedrig",
+          "confidence_grund": "Mehrere verschiedene Events in einer Anzeige"
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-011",
+      "beschreibung": "OVP in Klammern im Titel erkennen",
+      "tags": ["ovp_titel"],
+      "input": {
+        "titel": "Olivia Dean Wien 11.5.2026 VIP Lounge (Originalpreis 300€)",
+        "preis_eur": 290.0,
+        "beschreibung": "1 VIP Lounge Ticket für Olivia Dean, 11.05.2026. Platz in der ersten Reihe inklusive Buffet. Leider kann ich nicht hin."
+      },
+      "expected_events": [
+        {
+          "event_name": "Olivia Dean",
+          "event_datum": "2026-05-11",
+          "venue": null,
+          "stadt": "Wien",
+          "kategorie": "VIP",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 290.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 300.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-012",
+      "beschreibung": "OVP umgangssprachlich: 'damals um X€ pro Stück gekauft'",
+      "tags": ["ovp_umgangssprachlich"],
+      "input": {
+        "titel": "Dante YN Tranquille Tour 2026 Wien – 2x Tickets",
+        "preis_eur": 40.0,
+        "beschreibung": "Krankheitsbedingt verkaufe ich 2 Tickets für Dante YN am 14.04.2026 in Wien (FLUCC). Habe die Tickets damals um 30€ pro Stück gekauft und würde beide zusammen für 40€ weitergeben."
+      },
+      "expected_events": [
+        {
+          "event_name": "Dante YN Tranquille Tour 2026",
+          "event_datum": "2026-04-14",
+          "venue": "FLUCC",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 40.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 30.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-013",
+      "beschreibung": "K3: Konzerthaus → Sitzplatz automatisch ableiten",
+      "tags": ["k3_konzerthaus"],
+      "input": {
+        "titel": "Wiener Philharmoniker – Konzerthaus – 2x Tickets",
+        "preis_eur": 180.0,
+        "beschreibung": "2 Tickets für die Wiener Philharmoniker am 15.11.2026 im Wiener Konzerthaus. Reihe 3, Mittelparkett. Originalpreis je 85€. Beide zusammen 180€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Wiener Philharmoniker",
+          "event_datum": "2026-11-15",
+          "venue": "Wiener Konzerthaus",
+          "stadt": "Wien",
+          "kategorie": "Sitzplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 180.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 85.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-014",
+      "beschreibung": "K3: Stadion → Stehplatz automatisch ableiten wenn nicht explizit genannt",
+      "tags": ["k3_stadion"],
+      "input": {
+        "titel": "Coldplay Music of the Spheres Wien – 1 Ticket",
+        "preis_eur": 220.0,
+        "beschreibung": "1 Ticket für Coldplay am 05.08.2026 im Ernst-Happel-Stadion Wien. OVP 99€. Kein Sitzplatz angegeben, normales Ticket."
+      },
+      "expected_events": [
+        {
+          "event_name": "Coldplay",
+          "event_datum": "2026-08-05",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 220.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 99.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-015",
+      "beschreibung": "Kein Konzert-Ticket — Sportticket, confidence niedrig, not valid",
+      "tags": ["nicht_konzert"],
+      "input": {
+        "titel": "Rapid Wien vs SK Sturm Graz – 2x Tribüne Tickets",
+        "preis_eur": 60.0,
+        "beschreibung": "2 Tribünen-Tickets für das Bundesliga-Spiel Rapid Wien gegen SK Sturm Graz am 28.03.2026 im Allianz Stadion. Originalpreis je 25€. Beide zusammen 60€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Rapid Wien vs SK Sturm Graz",
+          "event_datum": "2026-03-28",
+          "venue": "Allianz Stadion",
+          "stadt": "Wien",
+          "kategorie": "Unbekannt",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": null,
+          "originalpreis_pro_karte": null,
+          "confidence": "niedrig",
+          "confidence_grund": "Kein Konzert-Ticket — Sportveranstaltung"
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-016",
+      "beschreibung": "VIP Lounge Ticket mit klarem Datum und Preis",
+      "tags": ["vip"],
+      "input": {
+        "titel": "Robbie Williams Wien 2026 – VIP Hospitality Package",
+        "preis_eur": 499.0,
+        "beschreibung": "1 VIP Hospitality Ticket für Robbie Williams am 07.07.2026 im Ernst-Happel-Stadion Wien. Inklusive Meet & Greet Möglichkeit, Catering. OVP 350€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Robbie Williams",
+          "event_datum": "2026-07-07",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "VIP",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 499.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 350.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-017",
+      "beschreibung": "Rammstein Privatverkauf — klares Datum, klarer Preis, basic case",
+      "tags": ["basic"],
+      "input": {
+        "titel": "Rammstein Wien 2026 – 2x Stehplatz",
+        "preis_eur": 280.0,
+        "beschreibung": "Verkaufe 2 Stehplatz-Tickets für Rammstein am 10.06.2026 im Ernst-Happel-Stadion Wien. Originalpreis je 99€. Muss leider absagen. Beide für 280€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Rammstein",
+          "event_datum": "2026-06-10",
+          "venue": "Ernst-Happel-Stadion",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 280.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 99.0,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-018",
+      "beschreibung": "Rammstein Tribute Show — K2 Regel, confidence mittel",
+      "tags": ["tribute"],
+      "input": {
+        "titel": "Rammstein Tribute Show Graz – 2x Tickets",
+        "preis_eur": 90.0,
+        "beschreibung": "2 Tickets für die Rammstein Tribute Night am 25.04.2026 in der Seifenfabrik Graz. Originalpreis je 39€. Tribute Band, kein echter Auftritt. Beide für 90€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Rammstein Tribute Show",
+          "event_datum": "2026-04-25",
+          "venue": "Seifenfabrik Graz",
+          "stadt": "Graz",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 2,
+          "angebotspreis_gesamt": 90.0,
+          "preis_ist_pro_karte": false,
+          "originalpreis_pro_karte": 39.0,
+          "confidence": "mittel",
+          "confidence_grund": "Tribute-Show, kein Originalpreis bekannt"
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-019",
+      "beschreibung": "Sponsor im Titel — K1 Regel, Sponsor nicht als Event-Name",
+      "tags": ["k1_sponsor"],
+      "input": {
+        "titel": "Red Bull Music präsentiert: Nicki Minaj Wien 2026 – 1x Ticket",
+        "preis_eur": 190.0,
+        "beschreibung": "1 Ticket für Nicki Minaj am 29.05.2026 in der Wiener Stadthalle. Stehplatz. OVP 79,90€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Nicki Minaj",
+          "event_datum": "2026-05-29",
+          "venue": "Wiener Stadthalle",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 190.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 79.9,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": true
+    },
+    {
+      "id": "GS-020",
+      "beschreibung": "Fehlender Preis — angebotspreis_gesamt null → nicht valide",
+      "tags": ["missing_preis"],
+      "input": {
+        "titel": "Harry Styles Wien 2026 – 1x Ticket VB",
+        "preis_eur": 0.0,
+        "beschreibung": "1 Ticket für Harry Styles am 14.09.2026 in der Wiener Stadthalle. VB — Preis auf Anfrage. OVP war 89€."
+      },
+      "expected_events": [
+        {
+          "event_name": "Harry Styles",
+          "event_datum": "2026-09-14",
+          "venue": "Wiener Stadthalle",
+          "stadt": "Wien",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": null,
+          "originalpreis_pro_karte": 89.0,
+          "confidence": "mittel",
+          "confidence_grund": "Angebotspreis fehlt (VB/Verhandlungsbasis)"
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-021",
+      "beschreibung": "Ungültiger Preis (0€) — ist_valide false wegen preis <= 0",
+      "tags": ["invalid_preis"],
+      "input": {
+        "titel": "Gratis Ticket – Konzert XY Wien",
+        "preis_eur": 0.0,
+        "beschreibung": "Verschenke 1 Ticket für Konzert XY am 01.06.2026, Wien. Kein Preis, einfach abholen."
+      },
+      "expected_events": [
+        {
+          "event_name": "Konzert XY",
+          "event_datum": "2026-06-01",
+          "venue": null,
+          "stadt": "Wien",
+          "kategorie": "Unbekannt",
+          "anzahl_karten": 1,
+          "angebotspreis_gesamt": 0.0,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": null,
+          "confidence": "mittel",
+          "confidence_grund": "Preis ist 0 — Gratis-Ticket"
+        }
+      ],
+      "is_valid_extraction": false
+    },
+    {
+      "id": "GS-022",
+      "beschreibung": "Komplexer Händler — 2 Kategorien mit OVP, beide Objekte valide",
+      "tags": ["haendler", "multi_kategorie"],
+      "input": {
+        "titel": "Pizzera & Jaus Salzburg 30.05.2026 – Front of Stage & Stehplatz",
+        "preis_eur": 99.0,
+        "beschreibung": "Pizzera und Jaus, Salzburg, 30.05.2026, Residenzplatz Salzburg.\n1) Stehplatz Front-of-Stage* Preis pro Karte EUR 129,-\n2) Stehplatz** Preis pro Karte EUR 99,-\nAufgedruckter Originalpreis Front-of-Stage* EUR 97,49\nAufgedruckter Originalpreis Stehplatz** EUR 77,49"
+      },
+      "expected_events": [
+        {
+          "event_name": "Pizzera & Jaus",
+          "event_datum": "2026-05-30",
+          "venue": "Residenzplatz Salzburg",
+          "stadt": "Salzburg",
+          "kategorie": "Front-of-Stage",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 97.49,
+          "confidence": "hoch",
+          "confidence_grund": null
+        },
+        {
+          "event_name": "Pizzera & Jaus",
+          "event_datum": "2026-05-30",
+          "venue": "Residenzplatz Salzburg",
+          "stadt": "Salzburg",
+          "kategorie": "Stehplatz",
+          "anzahl_karten": null,
+          "angebotspreis_gesamt": null,
+          "preis_ist_pro_karte": true,
+          "originalpreis_pro_karte": 77.49,
+          "confidence": "hoch",
+          "confidence_grund": null
+        }
+      ],
+      "is_valid_extraction": false
+    }
+  ]
+}
