@@ -209,8 +209,8 @@ def test_upsert_idempotent():
 
 
 def test_column_count_sanity():
-    """Sicherheits-Check: MAIN_FIELDS = 42 (34 Sprint-1 + 8 Sprint-2), DASHBOARD_FIELDS = 26."""
+    """Sicherheits-Check: MAIN_FIELDS = 47 (34 Sprint-1 + 8 Sprint-2 + 5 Verif), DASHBOARD_FIELDS = 35."""
     from export.excel_writer import DASHBOARD_FIELDS
     assert len(MAIN_FIELDS)      == 47
     assert len(MAIN_HEADERS)     == 47
-    assert len(DASHBOARD_FIELDS) == 32
+    assert len(DASHBOARD_FIELDS) == 35
