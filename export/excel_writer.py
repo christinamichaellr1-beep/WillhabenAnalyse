@@ -10,6 +10,7 @@ OVP-Felder: einmal gefunden → bleiben bei Updates erhalten (preserve_ovp=True)
 finalisiere_lauf() orchestriert upsert → archivierung → Dashboard-Refresh.
 """
 import datetime
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Sheet-Namen
@@ -263,6 +266,17 @@ def _compute_fields(event: dict) -> dict:
     result["venue_normiert"]  = venue_data["venue_normiert"]
     result["venue_kapazität"] = venue_data["venue_kapazität"]
     result["venue_typ"]       = venue_data["venue_typ"]
+
+    # Data-quality conflict detection (Phase 2)
+    from enrichment.konflikt_detector import detect_konflikte as _detect_konflikte
+    konflikte = _detect_konflikte(event)
+    if konflikte:
+        logger.warning(
+            "Konflikt erkannt: %s | id=%s",
+            konflikte,
+            event.get("willhaben_id", "?"),
+        )
+    result["data_konflikte"] = "; ".join(konflikte) if konflikte else ""
 
     return result
 
