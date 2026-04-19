@@ -85,7 +85,7 @@ _EVENTS = [
 
 
 def test_sheet_order():
-    """Dashboard ist erstes Sheet, Alte Veranstaltungen ist letztes."""
+    """Dashboard ist erstes Sheet, Archiv ist letztes."""
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "sprint1.xlsx"
         finalisiere_lauf(_EVENTS, path)

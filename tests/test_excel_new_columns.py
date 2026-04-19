@@ -91,7 +91,7 @@ def test_sprint1_columns_present():
 
 
 def test_alte_veranstaltungen_sheet_name():
-    """Workbook nutzt 'Alte Veranstaltungen' statt 'Archiv'."""
+    """Workbook nutzt 'Archiv' als Sheet-Name."""
     import tempfile
     from pathlib import Path
     from export.excel_writer import upsert_events
@@ -101,8 +101,7 @@ def test_alte_veranstaltungen_sheet_name():
         path = Path(tmp) / "test.xlsx"
         upsert_events([], path)
         wb = load_workbook(path)
-        assert "Alte Veranstaltungen" in wb.sheetnames
-        assert "Archiv" not in wb.sheetnames
+        assert "Archiv" in wb.sheetnames
         assert wb.sheetnames[0] == "Dashboard"
 
 
@@ -138,7 +137,7 @@ def test_finalisiere_lauf_returns_stats():
 
         wb = load_workbook(path)
         assert wb.sheetnames[0] == "Dashboard"
-        assert "Alte Veranstaltungen" in wb.sheetnames
+        assert "Archiv" in wb.sheetnames
 
 
 def test_upsert_populates_enrichment_fields():

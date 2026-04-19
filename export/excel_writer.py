@@ -30,7 +30,7 @@ SHEET_DASHBOARD        = "Dashboard"
 SHEET_HAUPT            = "Hauptübersicht"
 SHEET_REVIEW           = "Review Queue"
 SHEET_WATCHLIST        = "Watchlist-Config"
-SHEET_ARCHIV           = "Alte Veranstaltungen"
+SHEET_ARCHIV           = "Archiv"
 SHEET_NICHT_VERIFIZIERT = "Nicht-Verifiziert"
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ MANUELLE_SPALTEN_HEADERS: frozenset[str] = frozenset({
 
 
 def migriere_ovp_spalten(excel_path: Path) -> int:
-    """Adds missing OVP manual columns to Hauptübersicht and Alte Veranstaltungen (idempotent).
+    """Adds missing OVP manual columns to Hauptübersicht and Archiv (idempotent).
 
     Creates backup before modifying. Returns number of columns added.
     """
@@ -450,7 +450,7 @@ def _init_workbook(path: Path) -> Workbook:
     ws_watch.append(["Linkin Park Wien 09.06.2026", 89.90,
                      "https://www.oeticket.com/event/linkin-park-wien-12345", "Beispiel"])
 
-    # 5. Alte Veranstaltungen (letztes Sheet)
+    # 5. Archiv (letztes Sheet)
     ws_archiv = wb.create_sheet(SHEET_ARCHIV)
     _write_header(ws_archiv, ARCHIV_HEADERS)
     _auto_width(ws_archiv, ARCHIV_HEADERS)
