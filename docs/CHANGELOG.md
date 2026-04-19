@@ -5,6 +5,37 @@ Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ---
 
+## [2.3.0] — 2026-04-19 — Manuelle OVP-Pflege
+
+Branch `feature/manual-ovp-pflege`, 6 Phasen, 26+ Tests.
+
+### Hinzugefügt
+
+- **5 neue Spalten in Hauptübersicht** (nach Verifikations-Spalten):
+  `OVP manuell €/K`, `OVP Anbieter-Link`, `OVP Quelle`, `OVP manuell eingetragen am`, `OVP Notiz`
+- **`export/ovp_logic.py`** — pure functions `berechne_finaler_ovp()` und `validiere_ovp_anbieter_link()`;
+  5% Schwelle für Konflikt-Erkennung; manueller OVP gewinnt immer (8 Tests)
+- **`export/excel_writer.migriere_ovp_spalten()`** — idempotente Migration mit Backup (4 Tests)
+- **`MANUELLE_SPALTEN_HEADERS`** in `excel_writer.py` — Konstantenliste geschützter Felder
+- **`MANUELLE_SPALTEN`** in `parser/v2/historie_manager.py` — Protection-Layer:
+  `merge_scrape_mit_historie()` überschreibt manuelle Felder nie; neue Funktion
+  `update_bestehende_zeile()` für nicht-Scrape-Updates (6 Tests)
+- **Dashboard `OVP_Status`-Spalte**: `"manuell gepflegt ✓"` / `"nur extrahiert ⚠"` / `"fehlt ❌"`;
+  Konflikt zählt als `"manuell gepflegt ✓"` (manueller Wert gewinnt) (5 Tests)
+- **Dashboard nutzt `OVP final €/K`** statt `Originalpreis pro Karte` für Margenberechnung;
+  Hilfsfunktion `_ovp_final_fuer_gruppe()` in `dashboard_aggregator.py`
+- **Conditional Formatting** in Hauptübersicht: OVP-Quelle-Zelle eingefärbt —
+  fehlt=hellrot, extrahiert=hellgelb, Konflikt=orange, manuell=weiß (3 Tests)
+
+### Guardrails
+
+- Manuelle Spalten können **niemals** durch Parser/Scraper überschrieben werden
+- Link-Validierung sanft (nur http/https-Check, leere Links erlaubt)
+- Keine automatische Link-Generierung
+- Backup vor jeder Migration (`*_pre_ovp_YYYY-MM-DD.xlsx`)
+
+---
+
 ## [2.2.0] — 2026-04-19 — Data Quality Stage 1
 
 Branch `claude/beautiful-bassi-bd8001`, 5 Phasen, 37+ Tests.
