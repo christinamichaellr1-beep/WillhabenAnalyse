@@ -55,7 +55,7 @@ class TestBerechneFinalerOVP:
         assert quelle == "konflikt"
 
 
-class TestValidieroveOVPAnbieterLink:
+class TestValidiereOVPAnbieterLink:
     """Test suite for validiere_ovp_anbieter_link() function."""
 
     def test_link_validierung_gueltig(self):

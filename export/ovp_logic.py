@@ -52,7 +52,7 @@ def berechne_finaler_ovp(
         return man, "konflikt"
 
 
-def _parse_float(value) -> Optional[float]:
+def _parse_float(value: object) -> Optional[float]:
     """Converts value to float, returns None for falsy/invalid."""
     if value is None or value == "":
         return None
