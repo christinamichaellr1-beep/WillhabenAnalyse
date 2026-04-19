@@ -87,7 +87,7 @@ def test_sprint1_columns_present():
                "venue_kapazität", "venue_typ", "archiviert_am"]
     for f in sprint1:
         assert f in MAIN_FIELDS, f"Fehlendes Sprint-1-Feld: {f}"
-    assert len(MAIN_FIELDS) == 47  # 34 Sprint-1 + 8 Sprint-2 Historien-Spalten + 5 Verifikations-Spalten
+    assert len(MAIN_FIELDS) == 52  # 34 Sprint-1 + 8 Sprint-2 Historien-Spalten + 5 Verifikations-Spalten + 5 OVP-Pflege
 
 
 def test_alte_veranstaltungen_sheet_name():

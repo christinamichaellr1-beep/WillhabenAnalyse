@@ -89,6 +89,12 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("verif_datum",       "Verifiziert am"),
     ("verif_name",        "Verif. Kand. Name"),
     ("verif_score",       "Verif. Score"),
+    # Manuelle OVP-Pflege (Phase 3+)
+    ("ovp_manuell",                "OVP manuell €/K"),
+    ("ovp_anbieter_link",          "OVP Anbieter-Link"),
+    ("ovp_final_quelle",           "OVP Quelle"),
+    ("ovp_manuell_eingetragen_am", "OVP manuell eingetragen am"),
+    ("ovp_notiz",                  "OVP Notiz"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
@@ -165,6 +171,57 @@ DASHBOARD_HEADERS = [h for _, h in DASHBOARD_COLUMNS]
 
 # OVP-Felder: einmal gesetzt, nicht mehr überschreiben
 OVP_PROTECTED = {"originalpreis_pro_karte", "ovp_quelle", "ausverkauft"}
+
+MANUELLE_SPALTEN_HEADERS: frozenset[str] = frozenset({
+    "OVP manuell €/K",
+    "OVP Anbieter-Link",
+    "OVP Quelle",
+    "OVP manuell eingetragen am",
+    "OVP Notiz",
+    "Status",
+})
+
+
+def migriere_ovp_spalten(excel_path: Path) -> int:
+    """Adds missing OVP manual columns to Hauptübersicht and Alte Veranstaltungen (idempotent).
+
+    Creates backup before modifying. Returns number of columns added.
+    """
+    import shutil
+    from datetime import date as _date
+
+    backup_path = excel_path.with_name(
+        excel_path.stem + f"_pre_ovp_{_date.today().isoformat()}" + excel_path.suffix
+    )
+    shutil.copy2(excel_path, backup_path)
+
+    wb = load_workbook(excel_path)
+    added = 0
+
+    new_headers = [
+        "OVP manuell €/K",
+        "OVP Anbieter-Link",
+        "OVP Quelle",
+        "OVP manuell eingetragen am",
+        "OVP Notiz",
+    ]
+
+    for sheet_name in (SHEET_HAUPT, SHEET_ARCHIV):
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        existing_headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+        for hdr in new_headers:
+            if hdr not in existing_headers:
+                col_idx = len(existing_headers) + 1
+                ws.cell(row=1, column=col_idx, value=hdr)
+                _header_style(ws.cell(row=1, column=col_idx))
+                existing_headers.append(hdr)
+                added += 1
+
+    wb.save(excel_path)
+    return added
+
 
 # ---------------------------------------------------------------------------
 # Farben
