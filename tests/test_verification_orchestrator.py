@@ -69,13 +69,50 @@ def test_verify_skipped_blank_name():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: VERIFIED when 2 sources confirm with high score
+# Test 3: VERIFIED when Bandsintown + Wikidata/MusicBrainz confirm
 # ---------------------------------------------------------------------------
 
 def test_verify_verified_two_sources():
-    cand = _high_score_candidate("musicbrainz")
+    mock_bit = _make_client("bandsintown", candidates=[
+        EventCandidate(
+            event_name="Linkin Park",
+            event_datum=datetime.date(2026, 6, 9),
+            venue="Ernst-Happel-Stadion",
+            stadt="Wien",
+            source="bandsintown",
+            confidence_score=0.9,
+        )
+    ])
+    mock_wd = _make_client("wikidata", candidates=[
+        EventCandidate(
+            event_name="Linkin Park",
+            event_datum=datetime.date(2026, 6, 9),
+            venue="Ernst-Happel-Stadion",
+            stadt="Wien",
+            source="wikidata",
+            confidence_score=0.85,
+        )
+    ])
+    mock_mb = _make_client("musicbrainz", available=False)
+    mock_sk = _make_client("songkick", available=False)
 
-    mock_mb = _make_client("musicbrainz", candidates=[cand])
+    orc = Orchestrator(musicbrainz=mock_mb, wikidata=mock_wd, songkick=mock_sk, bandsintown=mock_bit)
+    result = orc.verify("Linkin Park", datetime.date(2026, 6, 9), "Wien")
+
+    assert result.status == VerifStatus.VERIFIED
+    assert "bandsintown" in result.sources_confirmed
+    assert "wikidata" in result.sources_confirmed
+    assert result.best_match is not None
+    assert result.best_match.total_score >= 0.6
+
+
+# ---------------------------------------------------------------------------
+# Test 3b: LIKELY when only MusicBrainz + Wikidata confirm (no Bandsintown)
+# ---------------------------------------------------------------------------
+
+def test_verify_likely_when_only_mb_wikidata():
+    cand_mb = _high_score_candidate("musicbrainz")
+    mock_mb = _make_client("musicbrainz", candidates=[cand_mb])
     mock_wd = _make_client("wikidata", candidates=[
         EventCandidate(
             event_name="Linkin Park",
@@ -87,16 +124,16 @@ def test_verify_verified_two_sources():
         )
     ])
     mock_sk = _make_client("songkick", available=False)
-    mock_bit = _make_client("bandsintown", available=False)
+    mock_bit = _make_client("bandsintown", available=False)  # Bandsintown NOT available
 
     orc = Orchestrator(musicbrainz=mock_mb, wikidata=mock_wd, songkick=mock_sk, bandsintown=mock_bit)
     result = orc.verify("Linkin Park", datetime.date(2026, 6, 9), "Wien")
 
-    assert result.status == VerifStatus.VERIFIED
+    # Without Bandsintown confirmation, cannot be VERIFIED — only LIKELY
+    assert result.status == VerifStatus.LIKELY
     assert "musicbrainz" in result.sources_confirmed
     assert "wikidata" in result.sources_confirmed
-    assert result.best_match is not None
-    assert result.best_match.total_score >= 0.6
+    assert "bandsintown" not in result.sources_confirmed
 
 
 # ---------------------------------------------------------------------------

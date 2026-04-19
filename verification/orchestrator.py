@@ -84,7 +84,11 @@ class Orchestrator:
         if not sources_checked and all_failed:
             return VerificationResult(status=VerifStatus.FAILED, verif_datum=today, notes="Alle Layer fehlgeschlagen")
 
-        if len(sources_confirmed) >= 2 and best_match and best_match.total_score >= 0.6:
+        # Songkick wird übersprungen wenn kein API-Key vorhanden (keine neuen Keys verfügbar)
+        # VERIFIED = Bandsintown-Bestätigung + Wikidata/MusicBrainz-Existenz
+        bit_confirmed = "bandsintown" in sources_confirmed
+        mb_or_wd_confirmed = "musicbrainz" in sources_confirmed or "wikidata" in sources_confirmed
+        if bit_confirmed and mb_or_wd_confirmed and best_match and best_match.total_score >= 0.6:
             status = VerifStatus.VERIFIED
         elif len(sources_confirmed) >= 1 and best_match and best_match.total_score >= 0.5:
             status = VerifStatus.LIKELY
