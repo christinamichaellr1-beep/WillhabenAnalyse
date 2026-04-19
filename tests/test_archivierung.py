@@ -5,18 +5,20 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 from export.archivierung import archive_expired
-from export.excel_writer import MAIN_FIELDS, MAIN_HEADERS, _write_header
+from export.excel_writer import (
+    MAIN_FIELDS, MAIN_HEADERS, SHEET_HAUPT, SHEET_ARCHIV, _write_header,
+)
 
 
 def _make_xlsx(path: Path, rows: list[dict]) -> None:
     wb = Workbook()
     ws_main = wb.active
-    ws_main.title = "Hauptübersicht"
+    ws_main.title = SHEET_HAUPT
     _write_header(ws_main, MAIN_HEADERS)
     for row in rows:
         ws_main.append([row.get(f, "") for f in MAIN_FIELDS])
 
-    ws_arch = wb.create_sheet("Archiv")
+    ws_arch = wb.create_sheet(SHEET_ARCHIV)
     _write_header(ws_arch, MAIN_HEADERS)
     wb.save(path)
 
@@ -41,7 +43,7 @@ def test_archive_expired_sets_archiviert_am():
         archive_expired(path, cutoff_date=datetime.date(2026, 1, 1))
 
         wb = load_workbook(path)
-        ws_arch = wb["Archiv"]
+        ws_arch = wb[SHEET_ARCHIV]
         col = MAIN_FIELDS.index("archiviert_am") + 1
         val = ws_arch.cell(row=2, column=col).value
         assert val == datetime.date.today().isoformat()

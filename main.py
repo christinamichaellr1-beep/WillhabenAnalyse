@@ -142,17 +142,16 @@ def run_pipeline(
     _log("=== SCHRITT 4: Excel-Update ===")
     if events:
         try:
-            from export.excel_writer import upsert_events, archive_expired
-            excel_stats = upsert_events(events, excel_path)
-            stats["excel_inserted"] = excel_stats.get("inserted", 0)
-            stats["excel_updated"] = excel_stats.get("updated", 0)
+            from export.excel_writer import finalisiere_lauf
+            result = finalisiere_lauf(events, excel_path)
+            stats["excel_inserted"] = result.get("inserted", 0)
+            stats["excel_updated"]  = result.get("updated", 0)
             _log(
-                f"Excel: {excel_stats.get('inserted', 0)} neu, "
-                f"{excel_stats.get('updated', 0)} aktualisiert, "
-                f"{excel_stats.get('review_added', 0)} in Review Queue."
+                f"Excel: {result.get('inserted', 0)} neu, "
+                f"{result.get('updated', 0)} aktualisiert, "
+                f"{result.get('review_added', 0)} in Review Queue."
             )
-            # Abgelaufene Events ins Archiv verschieben
-            archived = archive_expired(excel_path)
+            archived = result.get("archived", 0)
             if archived:
                 _log(f"Archiv: {archived} abgelaufene Events verschoben.")
 

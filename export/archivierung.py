@@ -7,7 +7,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
-from export.excel_writer import MAIN_FIELDS, COLOR_ARCHIV
+from export.excel_writer import MAIN_FIELDS, COLOR_ARCHIV, SHEET_HAUPT, SHEET_ARCHIV
 
 
 def archive_expired(excel_path: Path, cutoff_date: datetime.date | None = None) -> int:
@@ -22,8 +22,8 @@ def archive_expired(excel_path: Path, cutoff_date: datetime.date | None = None) 
         cutoff_date = datetime.date.today()
 
     wb = load_workbook(excel_path)
-    ws_main = wb["Hauptübersicht"]
-    ws_archiv = wb["Archiv"]
+    ws_main   = wb[SHEET_HAUPT]
+    ws_archiv = wb[SHEET_ARCHIV]
 
     datum_col = MAIN_FIELDS.index("event_datum") + 1
     archiviert_am_col = MAIN_FIELDS.index("archiviert_am") + 1

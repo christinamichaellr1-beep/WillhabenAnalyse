@@ -74,10 +74,9 @@ def main():
 
     # 6. Excel schreiben
     logger.info("=== EXCEL SCHREIBEN ===")
-    from export.excel_writer import upsert_events, archive_expired
-    stats = upsert_events(events, EXCEL_PATH)
+    from export.excel_writer import finalisiere_lauf
+    stats = finalisiere_lauf(events, EXCEL_PATH)
     logger.info("Excel-Stats: %s", stats)
-    archive_expired(EXCEL_PATH)
 
     # 7. Google Drive
     logger.info("=== GOOGLE DRIVE UPLOAD ===")
