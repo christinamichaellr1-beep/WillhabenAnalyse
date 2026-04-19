@@ -355,3 +355,66 @@ def test_aggregate_output_columns_complete():
     result = aggregate(df)
     for col in _OUTPUT_COLUMNS:
         assert col in result.columns, f"Fehlende Spalte: {col}"
+
+
+def test_aggregate_verif_columns_mixed():
+    """Modal, Pct, und Top-Quelle werden korrekt aus gemischten Verif-Werten berechnet."""
+    import pandas as pd
+    from app.backend.dashboard_aggregator import aggregate
+
+    rows = [
+        {"event_name": "X", "event_datum": "2026-06-01", "venue": "V", "stadt": "Wien",
+         "verif_status": "verifiziert", "verif_quellen": "bandsintown;musicbrainz", "verif_score": "0.9",
+         "anbieter_typ": "privat", "preis_pro_karte": 50.0},
+        {"event_name": "X", "event_datum": "2026-06-01", "venue": "V", "stadt": "Wien",
+         "verif_status": "verifiziert", "verif_quellen": "bandsintown", "verif_score": "0.8",
+         "anbieter_typ": "haendler", "preis_pro_karte": 60.0},
+        {"event_name": "X", "event_datum": "2026-06-01", "venue": "V", "stadt": "Wien",
+         "verif_status": "nicht_verifiziert", "verif_quellen": None, "verif_score": None,
+         "anbieter_typ": "privat", "preis_pro_karte": 45.0},
+    ]
+    df = pd.DataFrame(rows)
+    result = aggregate(df)
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["Verif_Status_Modal"] == "verifiziert"
+    assert row["Verif_Bestaetigt_Pct"] == round(2 / 3 * 100, 1)
+    assert row["Verif_Top_Quelle"] == "bandsintown"
+
+
+def test_aggregate_verif_columns_absent():
+    """Wenn Verif-Spalten fehlen, liefert aggregate None/0 ohne Exception."""
+    import pandas as pd
+    from app.backend.dashboard_aggregator import aggregate
+
+    rows = [
+        {"event_name": "Y", "event_datum": "2026-07-01", "venue": "V", "stadt": "Wien",
+         "anbieter_typ": "privat", "preis_pro_karte": 30.0},
+    ]
+    df = pd.DataFrame(rows)
+    result = aggregate(df)
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["Verif_Status_Modal"] is None
+    assert row["Verif_Bestaetigt_Pct"] == 0.0
+    assert row["Verif_Top_Quelle"] is None
+
+
+def test_aggregate_verif_top_quelle_semicolon():
+    """Top-Quelle wird aus semicolon-getrennten Quellen korrekt ermittelt."""
+    import pandas as pd
+    from app.backend.dashboard_aggregator import aggregate
+
+    rows = [
+        {"event_name": "Z", "event_datum": "2026-08-01", "venue": "V", "stadt": "Wien",
+         "verif_status": "verifiziert", "verif_quellen": "musicbrainz;bandsintown", "verif_score": "0.7",
+         "anbieter_typ": "privat", "preis_pro_karte": 55.0},
+        {"event_name": "Z", "event_datum": "2026-08-01", "venue": "V", "stadt": "Wien",
+         "verif_status": "wahrscheinlich", "verif_quellen": "musicbrainz", "verif_score": "0.6",
+         "anbieter_typ": "haendler", "preis_pro_karte": 65.0},
+    ]
+    df = pd.DataFrame(rows)
+    result = aggregate(df)
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["Verif_Top_Quelle"] == "musicbrainz"

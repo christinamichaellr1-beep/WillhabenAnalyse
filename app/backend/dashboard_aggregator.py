@@ -8,6 +8,7 @@ Preis_Bewegung) based on zuletzt_gesehen filter and preis_aktuell/preis_vor_7_ta
 """
 import math
 import re
+from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -305,6 +306,7 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
 
         # % bestätigt = verifiziert oder wahrscheinlich
         n_bestaetigt = int(verif_status_ser.isin(["verifiziert", "wahrscheinlich"]).sum())
+        # Denominator = total group size (including rows not yet verified)
         verif_bestaetigt_pct = round(n_bestaetigt / len(grp) * 100, 1) if len(grp) > 0 else float("nan")
 
         # Top-Quelle: flatten semicolon-joined sources, take most common
@@ -312,7 +314,6 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         all_quellen: list[str] = []
         for q in verif_quellen_ser:
             all_quellen.extend([x.strip() for x in q.split(";") if x.strip()])
-        from collections import Counter
         top_quelle = Counter(all_quellen).most_common(1)[0][0] if all_quellen else None
 
         _, event_datum, kategorie = keys
