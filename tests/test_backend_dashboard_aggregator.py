@@ -225,3 +225,133 @@ def test_export_csv_utf8_encoding(tmp_path):
     export_csv(df, out_path)
     content = out_path.read_text(encoding="utf-8")
     assert "Österreich" in content
+
+
+# ---------------------------------------------------------------------------
+# Tests: Sprint-1 neue Features
+# ---------------------------------------------------------------------------
+
+def test_aggregate_gesamt_anzahl():
+    df = _make_df()
+    result = aggregate(df)
+    assert result.iloc[0]["Gesamt_Anzahl"] == 3
+
+
+def test_aggregate_marge_eur():
+    """Marge_EUR = avg - OVP (absoluter Aufschlag)."""
+    df = _make_df()
+    result = aggregate(df)
+    row = result.iloc[0]
+    ovp = 89.9
+    # Haendler_Avg = (250+300)/2 = 275
+    assert row["Marge_Haendler_EUR"] == pytest.approx(275.0 - ovp, abs=0.01)
+    # Privat_Avg = 150
+    assert row["Marge_Privat_EUR"] == pytest.approx(150.0 - ovp, abs=0.01)
+
+
+def test_aggregate_top_verkaeufer():
+    df = pd.DataFrame({
+        "event_name":              ["Event X"] * 4,
+        "event_datum":             ["2026-06-01"] * 4,
+        "kategorie":               ["Stehplatz"] * 4,
+        "venue":                   ["Wien"] * 4,
+        "stadt":                   ["Wien"] * 4,
+        "anbieter_typ":            ["Händler"] * 4,
+        "preis_pro_karte":         [100.0, 110.0, 120.0, 130.0],
+        "originalpreis_pro_karte": [80.0] * 4,
+        "verkäufername":           ["TicketKing", "TicketKing", "OtherShop", "TicketKing"],
+    })
+    result = aggregate(df)
+    row = result.iloc[0]
+    assert row["Top_Verkaeufer"] == "TicketKing"
+    assert row["Top_Verkaeufer_Anzahl"] == 3
+
+
+def test_aggregate_confidence_modal():
+    df = pd.DataFrame({
+        "event_name":              ["Event Y"] * 3,
+        "event_datum":             ["2026-07-01"] * 3,
+        "kategorie":               ["VIP"] * 3,
+        "venue":                   ["V"] * 3,
+        "stadt":                   ["S"] * 3,
+        "anbieter_typ":            ["Privat"] * 3,
+        "preis_pro_karte":         [100.0, 110.0, 120.0],
+        "originalpreis_pro_karte": [80.0] * 3,
+        "confidence":              ["hoch", "hoch", "niedrig"],
+    })
+    result = aggregate(df)
+    assert result.iloc[0]["Confidence_Modal"] == "hoch"
+
+
+def test_aggregate_venue_normiert_passthrough():
+    df = _make_df()
+    df["venue_normiert"] = "Ernst-Happel-Stadion"
+    df["venue_typ"]      = "Stadion"
+    df["venue_kapazität"] = 51000
+    result = aggregate(df)
+    row = result.iloc[0]
+    assert row["Venue_normiert"] == "Ernst-Happel-Stadion"
+    assert row["Venue_typ"]      == "Stadion"
+    assert row["Venue_kapazität"] == 51000
+
+
+def test_aggregate_vertrieb_gewerblich_anteil():
+    df = pd.DataFrame({
+        "event_name":              ["Event Z"] * 4,
+        "event_datum":             ["2026-08-01"] * 4,
+        "kategorie":               ["Sitzplatz"] * 4,
+        "venue":                   ["V"] * 4,
+        "stadt":                   ["S"] * 4,
+        "anbieter_typ":            ["Händler", "Privat", "Händler", "Privat"],
+        "preis_pro_karte":         [100.0, 90.0, 110.0, 85.0],
+        "originalpreis_pro_karte": [80.0] * 4,
+        "vertrieb_klasse":         ["gewerblich", "privat", "gewerblich", "privat"],
+    })
+    result = aggregate(df)
+    assert result.iloc[0]["Vertrieb_Gewerblich_Anteil_Pct"] == pytest.approx(50.0)
+
+
+def test_aggregate_normalizes_event_name_for_grouping():
+    """Gleicher Event-Name in unterschiedlicher Schreibweise → eine Gruppe."""
+    df = pd.DataFrame({
+        "event_name":              ["Linkin Park", "LINKIN PARK", "linkin park"],
+        "event_datum":             ["2026-06-09"] * 3,
+        "kategorie":               ["Stehplatz"] * 3,
+        "venue":                   ["Wien"] * 3,
+        "stadt":                   ["Wien"] * 3,
+        "anbieter_typ":            ["Privat"] * 3,
+        "preis_pro_karte":         [100.0, 110.0, 120.0],
+        "originalpreis_pro_karte": [80.0] * 3,
+    })
+    result = aggregate(df)
+    assert len(result) == 1
+    assert result.iloc[0]["Gesamt_Anzahl"] == 3
+
+
+def test_aggregate_top_verkaeufer_missing_column():
+    """Fehlendes verkäufername-Spalte → None, 0."""
+    df = _make_df()
+    result = aggregate(df)
+    row = result.iloc[0]
+    assert row["Top_Verkaeufer"] is None
+    assert row["Top_Verkaeufer_Anzahl"] == 0
+
+
+def test_aggregate_column_map_contains_sprint1_headers():
+    from app.backend.dashboard_aggregator import _EXCEL_COLUMN_MAP
+    assert "Venue (normiert)"  in _EXCEL_COLUMN_MAP
+    assert "Venue-Kapazität"   in _EXCEL_COLUMN_MAP
+    assert "Venue-Typ"         in _EXCEL_COLUMN_MAP
+    assert "Vertriebsklasse"   in _EXCEL_COLUMN_MAP
+    assert "Eingestellt am"    in _EXCEL_COLUMN_MAP
+    assert "Confidence"        in _EXCEL_COLUMN_MAP
+    assert "Verkäufername"     in _EXCEL_COLUMN_MAP
+
+
+def test_aggregate_output_columns_complete():
+    """aggregate() gibt immer alle _OUTPUT_COLUMNS zurück."""
+    from app.backend.dashboard_aggregator import _OUTPUT_COLUMNS
+    df = _make_df()
+    result = aggregate(df)
+    for col in _OUTPUT_COLUMNS:
+        assert col in result.columns, f"Fehlende Spalte: {col}"
