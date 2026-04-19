@@ -213,4 +213,4 @@ def test_column_count_sanity():
     from export.excel_writer import DASHBOARD_FIELDS
     assert len(MAIN_FIELDS)      == 42
     assert len(MAIN_HEADERS)     == 42
-    assert len(DASHBOARD_FIELDS) == 26
+    assert len(DASHBOARD_FIELDS) == 32

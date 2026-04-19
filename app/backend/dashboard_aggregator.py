@@ -1,11 +1,14 @@
 """
 dashboard_aggregator.py
 
-Reads the 34-column 'Hauptübersicht' sheet and produces a grouped market
-analysis DataFrame. Groups by (event_name_normalized, event_datum, kategorie).
+Reads the 'Hauptübersicht' sheet and produces a grouped market analysis DataFrame.
+Groups by (event_name_normalized, event_datum, kategorie).
+Sprint-2: adds historical columns (Aktiv_7_Tage, Privat/Händler Ø aktuell/historisch,
+Preis_Bewegung) based on zuletzt_gesehen filter and preis_aktuell/preis_vor_7_tagen fields.
 """
 import math
 import re
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +33,11 @@ _EXCEL_COLUMN_MAP: dict[str, str] = {
     "Venue-Typ":                "venue_typ",
     "Vertriebsklasse":          "vertrieb_klasse",
     "Eingestellt am":           "eingestellt_am",
+    # Sprint 2 — Historien-Architektur
+    "Zuletzt gesehen":          "zuletzt_gesehen",
+    "Status":                   "status",
+    "Preis aktuell €/K":        "preis_aktuell",
+    "Preis vor 7+ Tagen €/K":  "preis_vor_7_tagen",
 }
 
 _ANBIETER_TYP_COL = "anbieter_typ"
@@ -52,7 +60,35 @@ _OUTPUT_COLUMNS: list[str] = [
     "Marge_Haendler_Pct", "Marge_Privat_Pct",
     "Top_Verkaeufer", "Top_Verkaeufer_Anzahl",
     "Confidence_Modal", "Vertrieb_Gewerblich_Anteil_Pct",
+    # Sprint 2 — Historische Spalten
+    "Aktiv_7_Tage",
+    "Privat_Avg_Aktuell", "Privat_Avg_Historisch",
+    "Haendler_Avg_Aktuell", "Haendler_Avg_Historisch",
+    "Preis_Bewegung",
 ]
+
+_SPRINT2_DF_COLS = ["zuletzt_gesehen", "status", "preis_aktuell", "preis_vor_7_tagen"]
+_PREIS_BEWEGUNG_THRESHOLD_PCT = 3.0
+
+
+def _safe_mean(series: "pd.Series") -> float | None:
+    valid = series.dropna()
+    return round(float(valid.mean()), 2) if not valid.empty else None
+
+
+def _preis_bewegung(aktuell: float | None, historisch: float | None) -> str:
+    """Gibt Preis-Bewegungs-Indikator zurück: 📉 -X% / ➡ stabil / 📈 +X%.
+
+    Schwelle: ±3%. X ist die gerundete prozentuale Änderung.
+    """
+    if aktuell is None or historisch is None or historisch == 0:
+        return "➡ stabil"
+    pct = (aktuell - historisch) / abs(historisch) * 100
+    if pct <= -_PREIS_BEWEGUNG_THRESHOLD_PCT:
+        return f"📉 {round(pct):.0f}%"
+    if pct >= _PREIS_BEWEGUNG_THRESHOLD_PCT:
+        return f"📈 +{round(pct):.0f}%"
+    return "➡ stabil"
 
 
 def _normalize_event_name(name) -> str:
@@ -120,6 +156,9 @@ def load_excel(path: Path) -> pd.DataFrame:
     try:
         df = pd.read_excel(path, sheet_name="Hauptübersicht", engine="openpyxl")
         df = df.rename(columns=_EXCEL_COLUMN_MAP)
+        for col in _SPRINT2_DF_COLS:
+            if col not in df.columns:
+                df[col] = None
         return _normalize_prices(df)
     except (FileNotFoundError, Exception):
         return pd.DataFrame()
@@ -143,8 +182,13 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = None
 
     df = df.copy()
+    for col in _SPRINT2_DF_COLS:
+        if col not in df.columns:
+            df[col] = None
     df[_ANBIETER_TYP_COL] = df[_ANBIETER_TYP_COL].fillna("Privat")
     df["_event_key"] = df["event_name"].apply(_normalize_event_name)
+
+    _7_tage_ago = (date.today() - timedelta(days=7)).isoformat()
 
     group_keys = ["_event_key", "event_datum", "kategorie"]
     for col in group_keys + ["event_name", "venue", "stadt"]:
@@ -185,6 +229,33 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         h_avg = haendler_stats["Haendler_Avg"]
         p_avg = privat_stats["Privat_Avg"]
 
+        # Sprint-2: Zuletzt-gesehen-Filter für aktuell vs historisch
+        zuletzt_ser = grp["zuletzt_gesehen"].fillna("").astype(str)
+        aktuell_mask = zuletzt_ser >= _7_tage_ago
+        grp_akt  = grp[aktuell_mask]
+        grp_hist = grp[~aktuell_mask]
+
+        aktiv_7_tage = int(
+            (grp["status"].eq("aktiv") & aktuell_mask).sum()
+        )
+
+        privat_akt  = grp_akt[grp_akt[_ANBIETER_TYP_COL]  == "Privat"]
+        privat_hist = grp_hist[grp_hist[_ANBIETER_TYP_COL] == "Privat"]
+        haendl_akt  = grp_akt[grp_akt[_ANBIETER_TYP_COL]  == "Händler"]
+        haendl_hist = grp_hist[grp_hist[_ANBIETER_TYP_COL] == "Händler"]
+
+        privat_avg_akt   = _safe_mean(privat_akt[_PREIS_COL])  if _PREIS_COL in privat_akt.columns  else None
+        privat_avg_hist  = _safe_mean(privat_hist[_PREIS_COL]) if _PREIS_COL in privat_hist.columns else None
+        haendl_avg_akt   = _safe_mean(haendl_akt[_PREIS_COL])  if _PREIS_COL in haendl_akt.columns  else None
+        haendl_avg_hist  = _safe_mean(haendl_hist[_PREIS_COL]) if _PREIS_COL in haendl_hist.columns else None
+
+        # Preis-Bewegung: group-Mittelwert preis_aktuell vs preis_vor_7_tagen
+        pa_vals = grp["preis_aktuell"].dropna()
+        pv_vals = grp["preis_vor_7_tagen"].dropna()
+        pa_mean = float(pa_vals.mean()) if not pa_vals.empty else None
+        pv_mean = float(pv_vals.mean()) if not pv_vals.empty else None
+        preis_bew = _preis_bewegung(pa_mean, pv_mean)
+
         _, event_datum, kategorie = keys
         rows.append({
             "Event":                           _first("event_name"),
@@ -207,6 +278,13 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             "Top_Verkaeufer_Anzahl":           top_count,
             "Confidence_Modal":                conf_modal,
             "Vertrieb_Gewerblich_Anteil_Pct":  gewerblich_anteil,
+            # Sprint 2
+            "Aktiv_7_Tage":                    aktiv_7_tage,
+            "Privat_Avg_Aktuell":              privat_avg_akt,
+            "Privat_Avg_Historisch":           privat_avg_hist,
+            "Haendler_Avg_Aktuell":            haendl_avg_akt,
+            "Haendler_Avg_Historisch":         haendl_avg_hist,
+            "Preis_Bewegung":                  preis_bew,
         })
 
     if not rows:

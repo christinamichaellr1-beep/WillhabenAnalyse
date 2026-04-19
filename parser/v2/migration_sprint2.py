@@ -75,8 +75,25 @@ def migrate_sprint2(excel_path: Path) -> int:
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
+    import shutil
 
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/willhaben_markt.xlsx")
-    count = migrate_sprint2(path)
-    print(f"Migriert: {count} Zeilen in {path}")
+    parser = argparse.ArgumentParser(description="Sprint-2 Migration: fügt 8 Historien-Spalten hinzu")
+    parser.add_argument("--excel", default="data/willhaben_markt.xlsx",
+                        help="Pfad zur Excel-Datei (Standard: data/willhaben_markt.xlsx)")
+    parser.add_argument("--backup", action="store_true",
+                        help="Erstellt vor der Migration eine .bak-Kopie der Datei")
+    args = parser.parse_args()
+
+    target = Path(args.excel)
+    if not target.exists():
+        print(f"FEHLER: Datei nicht gefunden: {target}")
+        raise SystemExit(1)
+
+    if args.backup:
+        bak = target.with_suffix(".bak.xlsx")
+        shutil.copy2(target, bak)
+        print(f"Backup erstellt: {bak}")
+
+    count = migrate_sprint2(target)
+    print(f"Migriert: {count} Zeilen in {target}")

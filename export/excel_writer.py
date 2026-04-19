@@ -138,6 +138,13 @@ DASHBOARD_COLUMNS: list[tuple[str, str]] = [
     ("Top_Verkaeufer_Anzahl",           "Top Verk. Anz."),
     ("Confidence_Modal",                "Confidence"),
     ("Vertrieb_Gewerblich_Anteil_Pct",  "Gewerbl. Anteil %"),
+    # Sprint 2 — Historische Dashboard-Spalten (27–32)
+    ("Aktiv_7_Tage",                    "Aktiv letzte 7 Tage"),
+    ("Privat_Avg_Aktuell",              "Privat Ø aktuell €/K"),
+    ("Privat_Avg_Historisch",           "Privat Ø historisch €/K"),
+    ("Haendler_Avg_Aktuell",            "Händler Ø aktuell €/K"),
+    ("Haendler_Avg_Historisch",         "Händler Ø historisch €/K"),
+    ("Preis_Bewegung",                  "Preis-Bewegung"),
 ]
 DASHBOARD_FIELDS  = [f for f, _ in DASHBOARD_COLUMNS]
 DASHBOARD_HEADERS = [h for _, h in DASHBOARD_COLUMNS]
