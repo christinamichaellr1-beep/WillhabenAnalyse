@@ -215,6 +215,40 @@ def _check_preis_pro_karte_plausibility(event: dict) -> dict:
     return event
 
 
+_UNGUELTIGE_EVENT_NAMEN: frozenset[str] = frozenset({
+    "unbekannt", "none", "", "n/a", "k.a.", "k. a.", "unbekanntes event",
+})
+
+
+def ist_valide_event_extraktion(event: dict) -> bool:
+    """Prüft ob ein extrahierter Event-Dict dashboard-tauglich ist.
+
+    Ein Event gilt als valide wenn:
+    - event_name vorhanden und nicht generisch ("Unbekannt" etc.)
+    - event_datum vorhanden und nicht leer
+    - mindestens ein Preis extrahiert (angebotspreis_gesamt > 0)
+    - confidence nicht "niedrig" mit komplett fehlendem Preis
+    """
+    name = str(event.get("event_name") or "").strip()
+    if not name or name.lower() in _UNGUELTIGE_EVENT_NAMEN:
+        return False
+
+    datum = event.get("event_datum")
+    if not datum or str(datum).strip() in ("", "None"):
+        return False
+
+    preis = event.get("angebotspreis_gesamt")
+    try:
+        preis_float = float(preis) if preis is not None else None
+    except (TypeError, ValueError):
+        preis_float = None
+
+    if preis_float is None or preis_float <= 0:
+        return False
+
+    return True
+
+
 def attach_metadata(
     events: list[dict],
     ad: dict,

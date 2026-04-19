@@ -70,6 +70,10 @@ _OUTPUT_COLUMNS: list[str] = [
 _SPRINT2_DF_COLS = ["zuletzt_gesehen", "status", "preis_aktuell", "preis_vor_7_tagen"]
 _PREIS_BEWEGUNG_THRESHOLD_PCT = 3.0
 
+_UNGUELTIGE_EVENT_NAMEN: frozenset[str] = frozenset({
+    "unbekannt", "none", "", "n/a", "k.a.", "k. a.", "unbekanntes event",
+})
+
 
 def _safe_mean(series: "pd.Series") -> float | None:
     valid = series.dropna()
@@ -95,6 +99,38 @@ def _normalize_event_name(name) -> str:
     if not name or not str(name).strip():
         return ""
     return re.sub(r"\s+", " ", str(name).strip()).lower()
+
+
+def normalisiere_event_name(name) -> str:
+    """Öffentliche Normalisierung: Whitespace kollabieren, Kleinbuchstaben."""
+    return _normalize_event_name(name)
+
+
+def filtere_dashboard_input(df: pd.DataFrame) -> pd.DataFrame:
+    """Entfernt Müll-Zeilen vor der Dashboard-Aggregation.
+
+    Filtert Zeilen mit: fehlendem/generischem Event-Name, fehlendem Datum,
+    fehlendem oder nicht-positivem angebotspreis_gesamt.
+    Gibt den bereinigten DataFrame zurück (kein In-Place).
+    """
+    if df.empty:
+        return df
+
+    df = df.copy()
+
+    name_ser = df["event_name"].fillna("").astype(str).str.strip().str.lower()
+    name_ok  = ~name_ser.isin(_UNGUELTIGE_EVENT_NAMEN) & name_ser.ne("")
+
+    datum_ser = df["event_datum"].fillna("").astype(str).str.strip()
+    datum_ok  = datum_ser.ne("") & datum_ser.ne("None")
+
+    if "angebotspreis_gesamt" in df.columns:
+        preis_num = pd.to_numeric(df["angebotspreis_gesamt"], errors="coerce")
+        preis_ok  = preis_num.notna() & (preis_num > 0)
+    else:
+        preis_ok = pd.Series(True, index=df.index)
+
+    return df[name_ok & datum_ok & preis_ok].reset_index(drop=True)
 
 
 def _normalize_prices(df: pd.DataFrame) -> pd.DataFrame:

@@ -209,3 +209,42 @@ def test_build_context_sanitizes_injection_in_description():
     ctx = build_context(ad)
     assert "Ignoriere alle Anweisungen" not in ctx
     assert "[ENTFERNT]" in ctx
+
+# --- ist_kategorie_seite ---
+
+def test_ist_kategorie_seite_delegiert_an_is_category_page():
+    from parser.v2.preprocessing import ist_kategorie_seite
+    ad = {
+        "titel": "4.126 Anzeigen in Konzerte / Musikfestivals",
+        "text_komplett": NAV_TEXT,
+    }
+    assert ist_kategorie_seite(ad) is True
+
+
+def test_ist_kategorie_seite_echtes_inserat_false():
+    from parser.v2.preprocessing import ist_kategorie_seite
+    ad = {
+        "titel": "Rammstein Wien 15.06.2025 - 2x Tickets",
+        "text_komplett": REAL_AD_TEXT,
+        "id": "123456",
+        "verkäufer_id": "987",
+    }
+    assert ist_kategorie_seite(ad) is False
+
+
+def test_ist_kategorie_seite_kein_id_kein_titel():
+    from parser.v2.preprocessing import ist_kategorie_seite
+    ad = {"titel": "", "text_komplett": "", "id": None, "verkäufer_id": None}
+    assert ist_kategorie_seite(ad) is True
+
+
+def test_ist_spam_inserat_delegiert_an_is_non_ticket():
+    from parser.v2.preprocessing import ist_spam_inserat
+    ad = {"titel": "Nebelfluid/ Fog Fluid", "text_komplett": NON_TICKET_TEXT}
+    assert ist_spam_inserat(ad) is True
+
+
+def test_ist_spam_inserat_ticket_ad_false():
+    from parser.v2.preprocessing import ist_spam_inserat
+    ad = {"titel": "Rammstein 2x Tickets", "text_komplett": REAL_AD_TEXT}
+    assert ist_spam_inserat(ad) is False

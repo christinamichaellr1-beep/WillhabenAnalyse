@@ -231,3 +231,70 @@ def test_plausibility_skips_when_preis_ist_pro_karte_false():
     }]
     result = validate(raw)
     assert result[0]["confidence"] == "hoch"
+
+
+# --- ist_valide_event_extraktion ---
+
+def test_ist_valide_vollstaendiges_event():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    event = {
+        "event_name": "Coldplay",
+        "event_datum": "2026-08-25",
+        "angebotspreis_gesamt": 190.0,
+    }
+    assert ist_valide_event_extraktion(event) is True
+
+
+def test_ist_valide_leerer_event_name():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "", "event_datum": "2026-01-01", "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_generischer_event_name_unbekannt():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Unbekannt", "event_datum": "2026-01-01", "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_generischer_event_name_none_string():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "none", "event_datum": "2026-01-01", "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_event_name_none_python():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": None, "event_datum": "2026-01-01", "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_kein_datum():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": None, "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_leeres_datum():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "", "angebotspreis_gesamt": 50.0}) is False
+
+
+def test_ist_valide_kein_preis():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "2026-01-01", "angebotspreis_gesamt": None}) is False
+
+
+def test_ist_valide_preis_null():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "2026-01-01", "angebotspreis_gesamt": 0.0}) is False
+
+
+def test_ist_valide_preis_negativ():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "2026-01-01", "angebotspreis_gesamt": -10.0}) is False
+
+
+def test_ist_valide_preis_als_string_zahl():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "2026-01-01", "angebotspreis_gesamt": "150"}) is True
+
+
+def test_ist_valide_preis_ungueltig_string():
+    from parser.v2.postprocessing import ist_valide_event_extraktion
+    assert ist_valide_event_extraktion({"event_name": "Konzert", "event_datum": "2026-01-01", "angebotspreis_gesamt": "xxx"}) is False
