@@ -234,8 +234,26 @@ COLOR_OVP_RED    = "FFC7CE"  # rot   (kein OVP gefunden)
 COLOR_CONF_GREEN = "C6EFCE"  # grün  (confidence=hoch)
 COLOR_CONF_YELLOW= "FFEB9C"  # gelb  (confidence=mittel)
 COLOR_CONF_RED   = "FFC7CE"  # rot   (confidence=niedrig)
+# Phase 5 — OVP Quelle Conditional Formatting
+COLOR_OVP_FEHLT      = "FFD6D6"  # hellrot  — kein OVP
+COLOR_OVP_EXTRAHIERT = "FFF5CC"  # hellgelb — nur extrahiert
+COLOR_OVP_MANUELL    = "FFFFFF"  # weiß     — manuell gepflegt (no fill needed)
+COLOR_OVP_KONFLIKT   = "FFDDAA"  # orange   — Konflikt
 
 WHITE = "FFFFFF"
+
+
+def _ovp_fill(ovp_final_quelle: "str | None") -> "PatternFill | None":
+    """Returns background fill for the OVP Quelle cell based on the resolution status."""
+    mapping = {
+        "konflikt":              PatternFill("solid", fgColor=COLOR_OVP_KONFLIKT),
+        "extrahiert":            PatternFill("solid", fgColor=COLOR_OVP_EXTRAHIERT),
+        "beide_übereinstimmend": None,  # weiß / keine Füllung nötig
+        "manuell":               None,  # weiß
+    }
+    if not ovp_final_quelle or ovp_final_quelle not in mapping:
+        return PatternFill("solid", fgColor=COLOR_OVP_FEHLT)
+    return mapping[ovp_final_quelle]
 
 
 def _header_style(cell):
@@ -364,6 +382,9 @@ def _write_row(ws, row_num: int, fields: list[str], data: dict, preserve_ovp: bo
         ws.cell(row=row_num, column=col_idx, value=value)
 
 
+_OVP_QUELLE_COL_IDX = MAIN_HEADERS.index("OVP Quelle") + 1  # 1-based
+
+
 def _apply_cell_colors(ws, row_num: int, data: dict, fields: list[str]):
     """Setzt farbige Zellen für OVP-Quelle und Confidence."""
     for col_idx, field in enumerate(fields, 1):
@@ -391,6 +412,12 @@ def _apply_cell_colors(ws, row_num: int, data: dict, fields: list[str]):
         elif data.get("verkäufertyp", "").lower() == "händler":
             if cell.fill.fgColor.rgb in ("00000000", WHITE):
                 cell.fill = PatternFill("solid", fgColor=COLOR_HÄNDLER)
+
+    # Phase 5: OVP Quelle cell — conditional fill based on ovp_final_quelle
+    ovp_q_cell = ws.cell(row=row_num, column=_OVP_QUELLE_COL_IDX)
+    fill = _ovp_fill(data.get("ovp_final_quelle"))
+    if fill is not None:
+        ovp_q_cell.fill = fill
 
 
 # ---------------------------------------------------------------------------
