@@ -70,3 +70,21 @@ def test_ovp_fehlt_cell_is_red():
         cell = ws.cell(row=2, column=ovp_q_col)
         assert cell.fill.fgColor.rgb.endswith(COLOR_OVP_FEHLT), \
             f"Expected red fill, got {cell.fill.fgColor.rgb}"
+
+
+def test_ovp_manuell_cell_has_no_color_fill():
+    """OVP-Quelle-Zelle hat keine Farbfüllung wenn ovp_final_quelle='manuell'."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        events = [_base_event("F003", ovp_manuell=80.0, ovp_final_quelle="manuell",
+                               originalpreis_pro_karte=None)]
+        finalisiere_lauf(events, path)
+
+        wb = load_workbook(path)
+        ws = wb[SHEET_HAUPT]
+        ovp_q_col = MAIN_HEADERS.index("OVP Quelle") + 1
+        cell = ws.cell(row=2, column=ovp_q_col)
+        # No fill should be applied for manuell/beide_übereinstimmend
+        rgb = cell.fill.fgColor.rgb
+        assert not rgb.endswith(COLOR_OVP_FEHLT), "manuell should not have red fill"
+        assert not rgb.endswith(COLOR_OVP_KONFLIKT), "manuell should not have orange fill"
