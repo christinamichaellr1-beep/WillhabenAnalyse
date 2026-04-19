@@ -70,6 +70,15 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("venue_kapazität",         "Venue-Kapazität"),
     ("venue_typ",               "Venue-Typ"),
     ("archiviert_am",           "Archiviert am"),
+    # Sprint 2 — Historien-Architektur (35–42)
+    ("erstmals_gesehen",          "Erstmals gesehen"),
+    ("zuletzt_gesehen",           "Zuletzt gesehen"),
+    ("status",                    "Status"),
+    ("scan_anzahl",               "Scan-Anzahl"),
+    ("preis_aktuell",             "Preis aktuell €/K"),
+    ("preis_vor_7_tagen",         "Preis vor 7+ Tagen €/K"),
+    ("preis_aenderungen_count",   "Preis-Änderungen Count"),
+    ("letzte_preisaenderung_am",  "Letzte Preisänderung am"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
@@ -398,6 +407,95 @@ def upsert_events(events: list[dict], excel_path: Path) -> dict:
     return stats
 
 
+def _read_row_as_dict(ws, row_num: int) -> dict:
+    """Liest eine Hauptübersicht-Zeile in ein MAIN_FIELDS-keyiertes dict."""
+    return {
+        field: ws.cell(row=row_num, column=col).value
+        for col, field in enumerate(MAIN_FIELDS, start=1)
+    }
+
+
+def update_hauptuebersicht_mit_historie(
+    events: list[dict],
+    excel_path: Path,
+    scan_datum: "datetime.date | None" = None,
+) -> dict:
+    """Append-Logik: merged neue Scrape-Daten in Hauptübersicht unter Erhalt der Preis-Historie.
+
+    Statt blindem Überschreiben (upsert_events) wird die bestehende Zeile zuerst gelesen
+    und mit HistorieManager gemerged. Neue Zeilen erhalten initialisierte History-Felder.
+    Rückgabe: {inserted, updated, review_added}.
+    """
+    from parser.v2.historie_manager import merge_scrape_mit_historie, markiere_inaktive
+
+    if scan_datum is None:
+        scan_datum = datetime.date.today()
+
+    wb = _load_or_create(excel_path)
+    ws_haupt  = wb[SHEET_HAUPT]
+    ws_review = wb[SHEET_REVIEW]
+
+    main_index   = _build_index(ws_haupt, id_field_pos=3)
+    review_index = _build_index(ws_review, id_field_pos=1)
+
+    current_ids = {str(e["willhaben_id"]) for e in events if e.get("willhaben_id")}
+    stats = {"inserted": 0, "updated": 0, "review_added": 0}
+
+    for event in events:
+        event = _compute_fields(event)
+        event.setdefault("scan_datum", scan_datum.strftime("%Y-%m-%d"))
+        event.setdefault("watchlist", "nein")
+        wid = str(event.get("willhaben_id") or "").strip()
+        if not wid:
+            continue
+
+        if wid in main_index:
+            row_num  = main_index[wid]
+            existing = _read_row_as_dict(ws_haupt, row_num)
+            # None/"" aus openpyxl normalisieren: leere Strings als None behandeln
+            existing = {k: (v if v != "" else None) for k, v in existing.items()}
+            merged   = merge_scrape_mit_historie(existing, event, scan_datum)
+            _write_row(ws_haupt, row_num, MAIN_FIELDS, merged, preserve_ovp=True)
+            _apply_cell_colors(ws_haupt, row_num, merged, MAIN_FIELDS)
+            stats["updated"] += 1
+        else:
+            event["erstmals_gesehen"]         = scan_datum.isoformat()
+            event["zuletzt_gesehen"]          = scan_datum.isoformat()
+            event["status"]                   = "aktiv"
+            event["scan_anzahl"]              = 1
+            event["preis_aktuell"]            = event.get("angebotspreis_pro_karte")
+            event["preis_vor_7_tagen"]        = None
+            event["preis_aenderungen_count"]  = 0
+            event["letzte_preisaenderung_am"] = scan_datum.isoformat()
+            next_row = ws_haupt.max_row + 1
+            _write_row(ws_haupt, next_row, MAIN_FIELDS, event, preserve_ovp=False)
+            _apply_cell_colors(ws_haupt, next_row, event, MAIN_FIELDS)
+            main_index[wid] = next_row
+            stats["inserted"] += 1
+
+        if event.get("confidence") == "niedrig" and wid not in review_index:
+            next_row = ws_review.max_row + 1
+            _write_row(ws_review, next_row, REVIEW_FIELDS, event, preserve_ovp=False)
+            review_index[wid] = next_row
+            stats["review_added"] += 1
+
+    # Inaktiv-Markierung: alle Zeilen prüfen
+    id_col = MAIN_FIELDS.index("willhaben_id") + 1
+    status_col = MAIN_FIELDS.index("status") + 1
+    all_rows = [
+        _read_row_as_dict(ws_haupt, r)
+        for r in range(2, ws_haupt.max_row + 1)
+        if ws_haupt.cell(row=r, column=id_col).value not in (None, "")
+    ]
+    updated_rows = markiere_inaktive(all_rows, current_ids, scan_datum)
+    for i, row_dict in enumerate(updated_rows):
+        data_row = i + 2
+        ws_haupt.cell(row=data_row, column=status_col).value = row_dict["status"]
+
+    wb.save(excel_path)
+    return stats
+
+
 def write_dashboard(agg_rows: list[dict], excel_path: Path) -> None:
     """
     Schreibt (oder überschreibt) das Dashboard-Sheet mit aggregierten Daten.
@@ -436,7 +534,7 @@ def finalisiere_lauf(events: list[dict], excel_path: Path) -> dict:
     from export.archivierung import archive_expired as _archive
     from app.backend.dashboard_aggregator import load_excel, aggregate
 
-    excel_stats = upsert_events(events, excel_path)
+    excel_stats = update_hauptuebersicht_mit_historie(events, excel_path)
     archived = _archive(excel_path)
 
     df = load_excel(excel_path)
