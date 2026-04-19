@@ -12,6 +12,7 @@ finalisiere_lauf() orchestriert upsert → archivierung → Dashboard-Refresh.
 import datetime
 import logging
 import math
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -172,6 +173,8 @@ DASHBOARD_HEADERS = [h for _, h in DASHBOARD_COLUMNS]
 # OVP-Felder: einmal gesetzt, nicht mehr überschreiben
 OVP_PROTECTED = {"originalpreis_pro_karte", "ovp_quelle", "ausverkauft"}
 
+# Headers, die der Parser niemals überschreiben darf (manuell oder systemverwaltet).
+# "Status" (aktiv/inaktiv/verkauft) wird vom HistorieManager verwaltet, nicht vom Parser.
 MANUELLE_SPALTEN_HEADERS: frozenset[str] = frozenset({
     "OVP manuell €/K",
     "OVP Anbieter-Link",
@@ -187,24 +190,16 @@ def migriere_ovp_spalten(excel_path: Path) -> int:
 
     Creates backup before modifying. Returns number of columns added.
     """
-    import shutil
-    from datetime import date as _date
-
     backup_path = excel_path.with_name(
-        excel_path.stem + f"_pre_ovp_{_date.today().isoformat()}" + excel_path.suffix
+        excel_path.stem + f"_pre_ovp_{datetime.date.today().isoformat()}" + excel_path.suffix
     )
     shutil.copy2(excel_path, backup_path)
 
     wb = load_workbook(excel_path)
     added = 0
 
-    new_headers = [
-        "OVP manuell €/K",
-        "OVP Anbieter-Link",
-        "OVP Quelle",
-        "OVP manuell eingetragen am",
-        "OVP Notiz",
-    ]
+    # Derived from MAIN_COLUMNS to stay in sync automatically
+    new_headers = [h for _, h in MAIN_COLUMNS[-5:]]
 
     for sheet_name in (SHEET_HAUPT, SHEET_ARCHIV):
         if sheet_name not in wb.sheetnames:
