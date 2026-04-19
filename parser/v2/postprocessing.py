@@ -126,7 +126,8 @@ def validate(raw_events: list[dict]) -> list[dict]:
     Pydantic-ähnliche Validierung ohne harten Crash:
     Ungültige Felder werden auf sichere Defaults gesetzt.
     """
-    return [_check_preis_pro_karte_plausibility(_validate_one(e)) for e in raw_events]
+    from .date_shift_heuristik import korrigiere_datum as _korrigiere_datum
+    return [_korrigiere_datum(_check_preis_pro_karte_plausibility(_validate_one(e))) for e in raw_events]
 
 
 def _validate_one(obj: Any) -> dict:
@@ -215,6 +216,40 @@ def _check_preis_pro_karte_plausibility(event: dict) -> dict:
     return event
 
 
+_UNGUELTIGE_EVENT_NAMEN: frozenset[str] = frozenset({
+    "unbekannt", "none", "", "n/a", "k.a.", "k. a.", "unbekanntes event",
+})
+
+
+def ist_valide_event_extraktion(event: dict) -> bool:
+    """Prüft ob ein extrahierter Event-Dict dashboard-tauglich ist.
+
+    Ein Event gilt als valide wenn:
+    - event_name vorhanden und nicht generisch ("Unbekannt" etc.)
+    - event_datum vorhanden und nicht leer
+    - mindestens ein Preis extrahiert (angebotspreis_gesamt > 0)
+    - confidence nicht "niedrig" mit komplett fehlendem Preis
+    """
+    name = str(event.get("event_name") or "").strip()
+    if not name or name.lower() in _UNGUELTIGE_EVENT_NAMEN:
+        return False
+
+    datum = event.get("event_datum")
+    if not datum or str(datum).strip() in ("", "None"):
+        return False
+
+    preis = event.get("angebotspreis_gesamt")
+    try:
+        preis_float = float(preis) if preis is not None else None
+    except (TypeError, ValueError):
+        preis_float = None
+
+    if preis_float is None or preis_float <= 0:
+        return False
+
+    return True
+
+
 def attach_metadata(
     events: list[dict],
     ad: dict,
@@ -240,5 +275,12 @@ def attach_metadata(
         ev["modell"]            = model_used
         ev["pipeline_version"]  = "v2.0"
         ev["parse_dauer_ms"]    = duration_ms
+        if not ev.get("stadt"):
+            from enrichment.venue_lookup import lookup as _lookup_venue
+            from enrichment.venue_stadt_mapping import get_stadt as _get_stadt
+            venue_info = _lookup_venue(ev.get("venue"))
+            inferred = _get_stadt(venue_info.get("venue_normiert"))
+            if inferred:
+                ev["stadt"] = inferred
         result.append(ev)
     return result

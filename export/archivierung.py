@@ -19,7 +19,7 @@ def archive_expired(excel_path: Path, cutoff_date: datetime.date | None = None) 
     if not excel_path.exists():
         return 0
     if cutoff_date is None:
-        cutoff_date = datetime.date.today()
+        cutoff_date = datetime.date.today() - datetime.timedelta(days=30)
 
     wb = load_workbook(excel_path)
     ws_main   = wb[SHEET_HAUPT]
@@ -65,3 +65,12 @@ def archive_expired(excel_path: Path, cutoff_date: datetime.date | None = None) 
         wb.save(excel_path)
 
     return archived
+
+
+def archive_aeltere_als(excel_path: Path, tage: int = 30) -> int:
+    """
+    Archives rows where event_datum < heute - tage.
+    Convenience wrapper around archive_expired.
+    """
+    cutoff = datetime.date.today() - datetime.timedelta(days=tage)
+    return archive_expired(excel_path, cutoff_date=cutoff)

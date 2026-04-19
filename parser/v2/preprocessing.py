@@ -124,6 +124,28 @@ def strip_nav_prefix(text: str) -> str:
     return "\n".join(lines[start_idx:]).lstrip("\n")
 
 
+def ist_kategorie_seite(ad: dict) -> bool:
+    """Deutschsprachiger Filter: True wenn Anzeige eine Kategorie-Übersichtsseite ist.
+
+    Erweitert is_category_page() um zusätzliche Heuristiken:
+    - Kein Verkäufer-ID (echte Inserate haben immer eine)
+    - Titel enthält typische Kategorie-Phrasen
+    """
+    if is_category_page(ad):
+        return True
+    # Kein Verkäufer-ID → kein echtes Inserat
+    if not ad.get("id") and not ad.get("verkäufer_id"):
+        titel = ad.get("titel", "") or ""
+        if not titel.strip():
+            return True
+    return False
+
+
+def ist_spam_inserat(ad: dict) -> bool:
+    """True wenn Anzeige wahrscheinlich Spam oder kein Ticket-Inserat ist."""
+    return is_non_ticket_ad(ad)
+
+
 def build_context(ad: dict, max_chars: int = 6000) -> str:
     """
     Baut den LLM-Kontext aus einem Anzeigen-Dict.

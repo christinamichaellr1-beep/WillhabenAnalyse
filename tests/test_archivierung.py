@@ -4,7 +4,7 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from export.archivierung import archive_expired
+from export.archivierung import archive_expired, archive_aeltere_als
 from export.excel_writer import (
     MAIN_FIELDS, MAIN_HEADERS, SHEET_HAUPT, SHEET_ARCHIV, _write_header,
 )
@@ -66,4 +66,67 @@ def test_archive_expired_default_cutoff_is_today():
             {"willhaben_id": "A1", "event_datum": "2020-01-01"},
         ])
         count = archive_expired(path)
+        assert count == 1
+
+
+def test_default_cutoff_ist_minus_30_tage():
+    today = datetime.date.today()
+    old_date = (today - datetime.timedelta(days=31)).isoformat()
+    recent_date = (today - datetime.timedelta(days=29)).isoformat()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        _make_xlsx(path, [
+            {"willhaben_id": "A1", "event_datum": old_date},
+        ])
+        count = archive_expired(path)
+        assert count == 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        _make_xlsx(path, [
+            {"willhaben_id": "B1", "event_datum": recent_date},
+        ])
+        count = archive_expired(path)
+        assert count == 0
+
+
+def test_archive_aeltere_als_30_tage():
+    today = datetime.date.today()
+    old_date = (today - datetime.timedelta(days=31)).isoformat()
+    recent_date = (today - datetime.timedelta(days=29)).isoformat()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        _make_xlsx(path, [
+            {"willhaben_id": "A1", "event_datum": old_date},
+            {"willhaben_id": "B1", "event_datum": recent_date},
+        ])
+        count = archive_aeltere_als(path, tage=30)
+        assert count == 1
+
+
+def test_archive_aeltere_als_7_tage():
+    today = datetime.date.today()
+    old_date = (today - datetime.timedelta(days=8)).isoformat()
+    recent_date = (today - datetime.timedelta(days=6)).isoformat()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        _make_xlsx(path, [
+            {"willhaben_id": "A1", "event_datum": old_date},
+            {"willhaben_id": "B1", "event_datum": recent_date},
+        ])
+        count = archive_aeltere_als(path, tage=7)
+        assert count == 1
+
+
+def test_archive_aeltere_als_null_tage():
+    today = datetime.date.today()
+    past_date = (today - datetime.timedelta(days=1)).isoformat()
+    future_date = (today + datetime.timedelta(days=1)).isoformat()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        _make_xlsx(path, [
+            {"willhaben_id": "A1", "event_datum": past_date},
+            {"willhaben_id": "B1", "event_datum": future_date},
+        ])
+        count = archive_aeltere_als(path, tage=0)
         assert count == 1

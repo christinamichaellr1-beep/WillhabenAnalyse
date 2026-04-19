@@ -5,6 +5,40 @@ Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ---
 
+## [2.2.0] — 2026-04-19 — Data Quality Stage 1
+
+Branch `claude/beautiful-bassi-bd8001`, 5 Phasen, 37+ Tests.
+
+### Hinzugefügt
+
+- **`enrichment/venue_stadt_mapping.py`** — maps 9 kanonische Venue-Namen auf Stadt (Wien);
+  integriert in `postprocessing.attach_metadata()` → fehlende `stadt`-Felder werden automatisch befüllt (12 Tests)
+- **`enrichment/konflikt_detector.py`** — pure function `detect_konflikte(event)` prüft 6 Datenqualitätsprobleme
+  (PREIS_LOGIK, DATUM_VERGANGENHEIT, OVP_INKONSISTENZ, PREIS_ZU_HOCH, NAME_FEHLT, CONFIDENCE_NIEDRIG_KEIN_GRUND);
+  integriert in `excel_writer._compute_fields()` mit WARNING-Logging (7 Tests)
+- **`parser/v2/date_shift_heuristik.py`** — `korrigiere_datum()` erkennt LLM-Datumsfehler (Off-by-one-year)
+  und korrigiert automatisch; integriert in `postprocessing.validate()` (9 Tests)
+- **`parser/v2/dedupliziere_hauptuebersicht.py`** — entfernt Duplikate aus Hauptübersicht-Sheet (4 Tests)
+- **`export/archivierung.py`** — neuer Default: archiviert nur Events älter als 30 Tage (statt sofort);
+  neue Funktion `archive_aeltere_als(path, tage=30)` (4 neue Tests, 8 gesamt)
+
+### Behoben
+
+- **Bug in `excel_writer.update_hauptuebersicht_mit_historie()`**: Deduplizierung nach `willhaben_id`
+  am Anfang der Batch-Verarbeitung verhindert Duplikat-Einträge wenn LLM mehrere Events pro Anzeige extrahiert (2 Tests)
+
+### Cleanup (Phase 6) — 2026-04-19
+
+Existierende Excel `data/willhaben_markt.xlsx` bereinigt:
+- Backup erstellt: `data/willhaben_markt_pre_stufe1_2026-04-19.xlsx`
+- Sheet-Umbenennung: `Archiv` → `Alte Veranstaltungen` (Code-Konsistenz)
+- Deduplizierung: 0 Duplikate gefunden
+- Archivierung (30-Tage-Default): 11 Events archiviert
+- Dashboard neu generiert: 281 → 287 Gruppen
+- Nach Google Drive hochgeladen
+
+---
+
 ## [2.1.0] — 2026-04-17/18
 
 Entwickelt auf Branch `claude/xenodochial-hofstadter-16be42`, gemergt nach `main` als
