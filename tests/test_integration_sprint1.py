@@ -104,8 +104,8 @@ def test_hauptuebersicht_has_34_columns():
         finalisiere_lauf(_EVENTS, path)
         wb = load_workbook(path)
         ws = wb[SHEET_HAUPT]
-        assert ws.max_column == 42
-        assert len(MAIN_FIELDS) == 42
+        assert ws.max_column == 47
+        assert len(MAIN_FIELDS) == 47
 
 
 def test_sprint1_enrichment_fields_written():
@@ -211,6 +211,6 @@ def test_upsert_idempotent():
 def test_column_count_sanity():
     """Sicherheits-Check: MAIN_FIELDS = 42 (34 Sprint-1 + 8 Sprint-2), DASHBOARD_FIELDS = 26."""
     from export.excel_writer import DASHBOARD_FIELDS
-    assert len(MAIN_FIELDS)      == 42
-    assert len(MAIN_HEADERS)     == 42
+    assert len(MAIN_FIELDS)      == 47
+    assert len(MAIN_HEADERS)     == 47
     assert len(DASHBOARD_FIELDS) == 32

@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 # Sheet-Namen
 # ---------------------------------------------------------------------------
 
-SHEET_DASHBOARD = "Dashboard"
-SHEET_HAUPT     = "Hauptübersicht"
-SHEET_REVIEW    = "Review Queue"
-SHEET_WATCHLIST = "Watchlist-Config"
-SHEET_ARCHIV    = "Alte Veranstaltungen"
+SHEET_DASHBOARD        = "Dashboard"
+SHEET_HAUPT            = "Hauptübersicht"
+SHEET_REVIEW           = "Review Queue"
+SHEET_WATCHLIST        = "Watchlist-Config"
+SHEET_ARCHIV           = "Alte Veranstaltungen"
+SHEET_NICHT_VERIFIZIERT = "Nicht-Verifiziert"
 
 # ---------------------------------------------------------------------------
 # Spalten-Definitionen (34 Spalten)
@@ -82,6 +83,12 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("preis_vor_7_tagen",         "Preis vor 7+ Tagen €/K"),
     ("preis_aenderungen_count",   "Preis-Änderungen Count"),
     ("letzte_preisaenderung_am",  "Letzte Preisänderung am"),
+    # Verifikations-Spalten
+    ("verif_status",      "Verif. Status"),
+    ("verif_quellen",     "Verif. Quellen"),
+    ("verif_datum",       "Verifiziert am"),
+    ("verif_name",        "Verif. Kand. Name"),
+    ("verif_score",       "Verif. Score"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
