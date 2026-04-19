@@ -51,6 +51,13 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("modell",                  "Modell"),
     ("pipeline_version",        "Pipeline-Version"),
     ("parse_dauer_ms",          "Parse-Dauer ms"),
+    # Sprint 1 — Spalten 29–34
+    ("eingestellt_am",          "Eingestellt am"),
+    ("vertrieb_klasse",         "Vertriebsklasse"),
+    ("venue_normiert",          "Venue (normiert)"),
+    ("venue_kapazität",         "Venue-Kapazität"),
+    ("venue_typ",               "Venue-Typ"),
+    ("archiviert_am",           "Archiviert am"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
