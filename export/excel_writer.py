@@ -155,6 +155,10 @@ DASHBOARD_COLUMNS: list[tuple[str, str]] = [
     ("Haendler_Avg_Aktuell",            "Händler Ø aktuell €/K"),
     ("Haendler_Avg_Historisch",         "Händler Ø historisch €/K"),
     ("Preis_Bewegung",                  "Preis-Bewegung"),
+    # Verifikations-Spalten
+    ("Verif_Status_Modal",              "Verif. Status"),
+    ("Verif_Bestaetigt_Pct",            "Verif. Bestätigt %"),
+    ("Verif_Top_Quelle",                "Verif. Top-Quelle"),
 ]
 DASHBOARD_FIELDS  = [f for f, _ in DASHBOARD_COLUMNS]
 DASHBOARD_HEADERS = [h for _, h in DASHBOARD_COLUMNS]

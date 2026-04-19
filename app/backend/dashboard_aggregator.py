@@ -38,6 +38,10 @@ _EXCEL_COLUMN_MAP: dict[str, str] = {
     "Status":                   "status",
     "Preis aktuell €/K":        "preis_aktuell",
     "Preis vor 7+ Tagen €/K":  "preis_vor_7_tagen",
+    # Verifikations-Felder
+    "Verif. Status":            "verif_status",
+    "Verif. Quellen":           "verif_quellen",
+    "Verif. Score":             "verif_score",
 }
 
 _ANBIETER_TYP_COL = "anbieter_typ"
@@ -65,6 +69,9 @@ _OUTPUT_COLUMNS: list[str] = [
     "Privat_Avg_Aktuell", "Privat_Avg_Historisch",
     "Haendler_Avg_Aktuell", "Haendler_Avg_Historisch",
     "Preis_Bewegung",
+    "Verif_Status_Modal",
+    "Verif_Bestaetigt_Pct",
+    "Verif_Top_Quelle",
 ]
 
 _SPRINT2_DF_COLS = ["zuletzt_gesehen", "status", "preis_aktuell", "preis_vor_7_tagen"]
@@ -292,6 +299,22 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         pv_mean = float(pv_vals.mean()) if not pv_vals.empty else None
         preis_bew = _preis_bewegung(pa_mean, pv_mean)
 
+        # Verifikations-Aggregation
+        verif_status_ser = grp["verif_status"].dropna().astype(str) if "verif_status" in grp.columns else pd.Series(dtype=str)
+        verif_status_modal = str(verif_status_ser.mode().iloc[0]) if not verif_status_ser.empty else None
+
+        # % bestätigt = verifiziert oder wahrscheinlich
+        n_bestaetigt = int(verif_status_ser.isin(["verifiziert", "wahrscheinlich"]).sum())
+        verif_bestaetigt_pct = round(n_bestaetigt / len(grp) * 100, 1) if len(grp) > 0 else float("nan")
+
+        # Top-Quelle: flatten semicolon-joined sources, take most common
+        verif_quellen_ser = grp["verif_quellen"].dropna().astype(str) if "verif_quellen" in grp.columns else pd.Series(dtype=str)
+        all_quellen: list[str] = []
+        for q in verif_quellen_ser:
+            all_quellen.extend([x.strip() for x in q.split(";") if x.strip()])
+        from collections import Counter
+        top_quelle = Counter(all_quellen).most_common(1)[0][0] if all_quellen else None
+
         _, event_datum, kategorie = keys
         rows.append({
             "Event":                           _first("event_name"),
@@ -321,6 +344,9 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             "Haendler_Avg_Aktuell":            haendl_avg_akt,
             "Haendler_Avg_Historisch":         haendl_avg_hist,
             "Preis_Bewegung":                  preis_bew,
+            "Verif_Status_Modal":              verif_status_modal,
+            "Verif_Bestaetigt_Pct":            verif_bestaetigt_pct,
+            "Verif_Top_Quelle":                top_quelle,
         })
 
     if not rows:
