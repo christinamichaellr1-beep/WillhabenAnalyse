@@ -452,6 +452,14 @@ def update_hauptuebersicht_mit_historie(
     if scan_datum is None:
         scan_datum = datetime.date.today()
 
+    # Dedupliziere nach willhaben_id — letztes Vorkommen gewinnt
+    seen_ids: dict[str, int] = {}
+    for i, ev in enumerate(events):
+        wid = str(ev.get("willhaben_id") or "").strip()
+        if wid:
+            seen_ids[wid] = i
+    events = [events[i] for i in sorted(seen_ids.values())]
+
     wb = _load_or_create(excel_path)
     ws_haupt  = wb[SHEET_HAUPT]
     ws_review = wb[SHEET_REVIEW]
