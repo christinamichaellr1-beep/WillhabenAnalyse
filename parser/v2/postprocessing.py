@@ -274,5 +274,12 @@ def attach_metadata(
         ev["modell"]            = model_used
         ev["pipeline_version"]  = "v2.0"
         ev["parse_dauer_ms"]    = duration_ms
+        if not ev.get("stadt"):
+            from enrichment.venue_lookup import lookup as _lookup_venue
+            from enrichment.venue_stadt_mapping import get_stadt as _get_stadt
+            venue_info = _lookup_venue(ev.get("venue"))
+            inferred = _get_stadt(venue_info.get("venue_normiert"))
+            if inferred:
+                ev["stadt"] = inferred
         result.append(ev)
     return result
