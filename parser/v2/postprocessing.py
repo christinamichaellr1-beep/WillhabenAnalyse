@@ -126,7 +126,8 @@ def validate(raw_events: list[dict]) -> list[dict]:
     Pydantic-ähnliche Validierung ohne harten Crash:
     Ungültige Felder werden auf sichere Defaults gesetzt.
     """
-    return [_check_preis_pro_karte_plausibility(_validate_one(e)) for e in raw_events]
+    from .date_shift_heuristik import korrigiere_datum as _korrigiere_datum
+    return [_korrigiere_datum(_check_preis_pro_karte_plausibility(_validate_one(e))) for e in raw_events]
 
 
 def _validate_one(obj: Any) -> dict:
