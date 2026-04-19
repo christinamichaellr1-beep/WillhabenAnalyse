@@ -2,8 +2,11 @@
 Ollama-Aufrufe für Parser v2.0.
 Fallback-Chain: gemma3:27b (format) → gemma4:26b (text) → gemma4:latest (text).
 Retry via tenacity bei transienten Fehlern.
+Auto-Restart von Ollama nach 3 aufeinanderfolgenden Timeouts (max. 2x pro Run).
 """
 import logging
+import os
+import subprocess
 import time
 
 import requests
@@ -25,6 +28,43 @@ EMERGENCY_MODEL = "gemma4:latest"
 CHAT_URL     = "http://localhost:11434/api/chat"
 GENERATE_URL = "http://localhost:11434/api/generate"
 TIMEOUT      = 240
+
+_OLLAMA_MODELS_PATH = "/Volumes/MacMiniMich/KI"
+_MAX_RESTARTS = 2
+
+_consecutive_timeouts: int = 0
+_restart_count: int = 0
+
+
+def _call_with_restart(call_fn, prompt: str, model: str) -> tuple[str, int]:
+    """Wraps einen Ollama-Call mit Timeout-Zähler und automatischem Restart."""
+    global _consecutive_timeouts, _restart_count
+    while True:
+        try:
+            result = call_fn(prompt, model)
+            _consecutive_timeouts = 0
+            return result
+        except requests.exceptions.Timeout:
+            _consecutive_timeouts += 1
+            if _consecutive_timeouts >= 3 and _restart_count < _MAX_RESTARTS:
+                logger.warning("OLLAMA_RESTART: 3 consecutive timeouts, restarting ollama...")
+                subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True)
+                time.sleep(5)
+                subprocess.Popen(
+                    ["ollama", "serve"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env={**os.environ, "OLLAMA_MODELS": _OLLAMA_MODELS_PATH},
+                )
+                time.sleep(10)
+                _consecutive_timeouts = 0
+                _restart_count += 1
+                continue
+            if _consecutive_timeouts >= 3 and _restart_count >= _MAX_RESTARTS:
+                logger.error(
+                    "OLLAMA_RESTART: max %d Restarts erreicht, gebe auf", _MAX_RESTARTS
+                )
+            raise
 
 
 def _duration_from_response(data: dict) -> int:
@@ -96,9 +136,9 @@ def extract(
     if model_override:
         try:
             if model_override == PRIMARY_MODEL:
-                raw, ms = _call_chat(prompt, model_override)
+                raw, ms = _call_with_restart(_call_chat, prompt, model_override)
             else:
-                raw, ms = _call_generate(prompt, model_override)
+                raw, ms = _call_with_restart(_call_generate, prompt, model_override)
             return raw, model_override, ms, False
         except Exception as exc:
             logger.error("model_override %s fehlgeschlagen: %s", model_override, exc)
@@ -106,7 +146,7 @@ def extract(
 
     # Primary: gemma3:27b mit Structured Output
     try:
-        raw, ms = _call_chat(prompt, PRIMARY_MODEL)
+        raw, ms = _call_with_restart(_call_chat, prompt, PRIMARY_MODEL)
         logger.debug("Primary model %s erfolgreich (%d ms)", PRIMARY_MODEL, ms)
         return raw, PRIMARY_MODEL, ms, False
     except Exception as exc:
@@ -114,7 +154,7 @@ def extract(
 
     # Fallback: gemma4:26b Text-Modus (Thinking-Bug → kein format)
     try:
-        raw, ms = _call_generate(prompt, FALLBACK_MODEL)
+        raw, ms = _call_with_restart(_call_generate, prompt, FALLBACK_MODEL)
         logger.info("Fallback %s erfolgreich (%d ms)", FALLBACK_MODEL, ms)
         return raw, FALLBACK_MODEL, ms, True
     except Exception as exc:
@@ -122,7 +162,7 @@ def extract(
 
     # Emergency: gemma4:latest
     try:
-        raw, ms = _call_generate(prompt, EMERGENCY_MODEL)
+        raw, ms = _call_with_restart(_call_generate, prompt, EMERGENCY_MODEL)
         logger.info("Emergency %s erfolgreich (%d ms)", EMERGENCY_MODEL, ms)
         return raw, EMERGENCY_MODEL, ms, True
     except Exception as exc:
