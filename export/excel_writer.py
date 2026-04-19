@@ -3,7 +3,7 @@ excel_writer.py
 
 Schreibt/aktualisiert die Willhaben-Analyse-Tabelle (openpyxl).
 5 Sheets (in Reihenfolge): Dashboard, Hauptübersicht, Review Queue,
-Watchlist-Config, Alte Veranstaltungen.
+Watchlist-Config, Archiv.
 
 Update-Logik: Willhaben-ID als Schlüssel → bestehende Zeile updaten, nie duplizieren.
 OVP-Felder: einmal gefunden → bleiben bei Updates erhalten (preserve_ovp=True).
