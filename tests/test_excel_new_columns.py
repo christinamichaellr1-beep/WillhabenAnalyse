@@ -80,6 +80,107 @@ def test_upsert_writes_new_fields_to_excel():
         assert ws.cell(2, dauer_col).value == 1234
 
 
+def test_sprint1_columns_present():
+    """Excel Hauptübersicht muss 34 Spalten haben (28 alt + 6 Sprint-1)."""
+    from export.excel_writer import MAIN_FIELDS
+    sprint1 = ["eingestellt_am", "vertrieb_klasse", "venue_normiert",
+               "venue_kapazität", "venue_typ", "archiviert_am"]
+    for f in sprint1:
+        assert f in MAIN_FIELDS, f"Fehlendes Sprint-1-Feld: {f}"
+    assert len(MAIN_FIELDS) == 34
+
+
+def test_alte_veranstaltungen_sheet_name():
+    """Workbook nutzt 'Alte Veranstaltungen' statt 'Archiv'."""
+    import tempfile
+    from pathlib import Path
+    from export.excel_writer import upsert_events
+    from openpyxl import load_workbook
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        upsert_events([], path)
+        wb = load_workbook(path)
+        assert "Alte Veranstaltungen" in wb.sheetnames
+        assert "Archiv" not in wb.sheetnames
+        assert wb.sheetnames[0] == "Dashboard"
+
+
+def test_finalisiere_lauf_returns_stats():
+    """finalisiere_lauf führt upsert + archivierung + Dashboard in einem Aufruf aus."""
+    import tempfile
+    from pathlib import Path
+    from export.excel_writer import finalisiere_lauf
+    from openpyxl import load_workbook
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        events = [{
+            "willhaben_id": "FL_001",
+            "willhaben_link": "https://willhaben.at/fl001",
+            "event_name": "FinTest",
+            "event_datum": "2030-06-01",
+            "venue": "Gasometer",
+            "stadt": "Wien",
+            "kategorie": "Stehplatz",
+            "anzahl_karten": 2,
+            "angebotspreis_gesamt": 100.0,
+            "preis_ist_pro_karte": False,
+            "verkäufertyp": "Privat",
+            "verkäufername": "Hans",
+            "verkäufer_id": "123",
+            "mitglied_seit": "01/2020",
+            "confidence": "hoch",
+        }]
+        result = finalisiere_lauf(events, path)
+        assert result["inserted"] == 1
+        assert "archived" in result
+
+        wb = load_workbook(path)
+        assert wb.sheetnames[0] == "Dashboard"
+        assert "Alte Veranstaltungen" in wb.sheetnames
+
+
+def test_upsert_populates_enrichment_fields():
+    """upsert_events befüllt vertrieb_klasse und venue_normiert automatisch."""
+    import tempfile
+    from pathlib import Path
+    from export.excel_writer import upsert_events, MAIN_FIELDS
+    from openpyxl import load_workbook
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "test.xlsx"
+        events = [{
+            "willhaben_id": "ENRICH_01",
+            "willhaben_link": "https://willhaben.at/e01",
+            "event_name": "EnrichTest",
+            "event_datum": "2030-01-01",
+            "venue": "Gasometer",
+            "stadt": "Wien",
+            "kategorie": "Stehplatz",
+            "anzahl_karten": 2,
+            "angebotspreis_gesamt": 100.0,
+            "preis_ist_pro_karte": False,
+            "verkäufertyp": "Händler",
+            "verkäufername": "TicketShop",
+            "verkäufer_id": "999",
+            "mitglied_seit": "01/2020",
+            "confidence": "hoch",
+        }]
+        upsert_events(events, path)
+        wb = load_workbook(path)
+        ws = wb["Hauptübersicht"]
+        hdrs = [ws.cell(row=1, column=c).value for c in range(1, 35)]
+
+        vk_col  = hdrs.index("Vertriebsklasse") + 1
+        vnorm   = hdrs.index("Venue (normiert)") + 1
+        vtyp    = hdrs.index("Venue-Typ") + 1
+
+        assert ws.cell(row=2, column=vk_col).value == "gewerblich"
+        assert ws.cell(row=2, column=vnorm).value  == "Gasometer Wien"
+        assert ws.cell(row=2, column=vtyp).value   == "Halle"
+
+
 def test_old_data_compatible_new_columns_empty():
     """Bestehende Zeilen (v1) bekommen leere neue Spalten — kein Crash."""
     from export.excel_writer import upsert_events

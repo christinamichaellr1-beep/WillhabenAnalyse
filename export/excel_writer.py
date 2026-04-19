@@ -2,13 +2,15 @@
 excel_writer.py
 
 Schreibt/aktualisiert die Willhaben-Analyse-Tabelle (openpyxl).
-4 Sheets: Hauptübersicht, Review Queue, Archiv, Watchlist-Config.
+5 Sheets (in Reihenfolge): Dashboard, Hauptübersicht, Review Queue,
+Watchlist-Config, Alte Veranstaltungen.
 
 Update-Logik: Willhaben-ID als Schlüssel → bestehende Zeile updaten, nie duplizieren.
 OVP-Felder: einmal gefunden → bleiben bei Updates erhalten (preserve_ovp=True).
-Abgelaufene Events → archive_expired() verschiebt sie ins Archiv-Sheet.
+finalisiere_lauf() orchestriert upsert → archivierung → Dashboard-Refresh.
 """
 import datetime
+import math
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,17 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # ---------------------------------------------------------------------------
-# Spalten-Definitionen (24 Hauptspalten laut Design-Spec)
+# Sheet-Namen
+# ---------------------------------------------------------------------------
+
+SHEET_DASHBOARD = "Dashboard"
+SHEET_HAUPT     = "Hauptübersicht"
+SHEET_REVIEW    = "Review Queue"
+SHEET_WATCHLIST = "Watchlist-Config"
+SHEET_ARCHIV    = "Alte Veranstaltungen"
+
+# ---------------------------------------------------------------------------
+# Spalten-Definitionen (34 Spalten)
 # ---------------------------------------------------------------------------
 
 # Interne Feldnamen → Header-Anzeigenamen
@@ -51,6 +63,13 @@ MAIN_COLUMNS: list[tuple[str, str]] = [
     ("modell",                  "Modell"),
     ("pipeline_version",        "Pipeline-Version"),
     ("parse_dauer_ms",          "Parse-Dauer ms"),
+    # Sprint 1 — Spalten 29–34
+    ("eingestellt_am",          "Eingestellt am"),
+    ("vertrieb_klasse",         "Vertriebsklasse"),
+    ("venue_normiert",          "Venue (normiert)"),
+    ("venue_kapazität",         "Venue-Kapazität"),
+    ("venue_typ",               "Venue-Typ"),
+    ("archiviert_am",           "Archiviert am"),
 ]
 
 # Feldnamen als einfache Liste (für Indexzugriff)
@@ -82,6 +101,37 @@ WATCHLIST_COLUMNS: list[tuple[str, str]] = [
 ]
 WATCHLIST_FIELDS = [f for f, _ in WATCHLIST_COLUMNS]
 WATCHLIST_HEADERS = [h for _, h in WATCHLIST_COLUMNS]
+
+DASHBOARD_COLUMNS: list[tuple[str, str]] = [
+    ("Event",                           "Event"),
+    ("Kategorie",                       "Kategorie"),
+    ("Datum",                           "Datum"),
+    ("Venue",                           "Venue"),
+    ("Stadt",                           "Stadt"),
+    ("Venue_normiert",                  "Venue (normiert)"),
+    ("Venue_typ",                       "Venue-Typ"),
+    ("Venue_kapazität",                 "Venue-Kapazität"),
+    ("Gesamt_Anzahl",                   "Gesamt Angebote"),
+    ("Privat_Anzahl",                   "Privat Anz."),
+    ("Privat_Min",                      "Privat Min €/K"),
+    ("Privat_Avg",                      "Privat Avg €/K"),
+    ("Privat_Max",                      "Privat Max €/K"),
+    ("Haendler_Anzahl",                 "Händler Anz."),
+    ("Haendler_Min",                    "Händler Min €/K"),
+    ("Haendler_Avg",                    "Händler Avg €/K"),
+    ("Haendler_Max",                    "Händler Max €/K"),
+    ("OVP",                             "OVP €/K"),
+    ("Marge_Haendler_EUR",              "Händler Marge €"),
+    ("Marge_Privat_EUR",                "Privat Marge €"),
+    ("Marge_Haendler_Pct",              "Händler Marge %"),
+    ("Marge_Privat_Pct",               "Privat Marge %"),
+    ("Top_Verkaeufer",                  "Top Verkäufer"),
+    ("Top_Verkaeufer_Anzahl",           "Top Verk. Anz."),
+    ("Confidence_Modal",                "Confidence"),
+    ("Vertrieb_Gewerblich_Anteil_Pct",  "Gewerbl. Anteil %"),
+]
+DASHBOARD_FIELDS  = [f for f, _ in DASHBOARD_COLUMNS]
+DASHBOARD_HEADERS = [h for _, h in DASHBOARD_COLUMNS]
 
 # OVP-Felder: einmal gesetzt, nicht mehr überschreiben
 OVP_PROTECTED = {"originalpreis_pro_karte", "ovp_quelle", "ausverkauft"}
@@ -157,7 +207,10 @@ def _build_index(ws, id_field_pos: int = 3) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _compute_fields(event: dict) -> dict:
-    """Berechnet abgeleitete Felder: angebotspreis_pro_karte, marge_eur, marge_pct."""
+    """Berechnet abgeleitete Felder + Enrichment (vertrieb_klasse, venue_normiert)."""
+    from enrichment.vertrieb_erkenner import classify as _classify_vertrieb
+    from enrichment.venue_lookup import lookup as _lookup_venue
+
     result = dict(event)
 
     gesamt = event.get("angebotspreis_gesamt")
@@ -187,6 +240,13 @@ def _compute_fields(event: dict) -> dict:
 
     # review_nötig
     result["review_nötig"] = "ja" if event.get("confidence") == "niedrig" else "nein"
+
+    # Sprint-1 Enrichment
+    result["vertrieb_klasse"] = _classify_vertrieb(event)
+    venue_data = _lookup_venue(event.get("venue"))
+    result["venue_normiert"]  = venue_data["venue_normiert"]
+    result["venue_kapazität"] = venue_data["venue_kapazität"]
+    result["venue_typ"]       = venue_data["venue_typ"]
 
     return result
 
@@ -246,25 +306,33 @@ def _apply_cell_colors(ws, row_num: int, data: dict, fields: list[str]):
 def _init_workbook(path: Path) -> Workbook:
     wb = Workbook()
 
-    ws_main = wb.active
-    ws_main.title = "Hauptübersicht"
+    # 1. Dashboard (index 0 = aktives Sheet beim Öffnen)
+    ws_dash = wb.active
+    ws_dash.title = SHEET_DASHBOARD
+    _write_header(ws_dash, DASHBOARD_HEADERS)
+    _auto_width(ws_dash, DASHBOARD_HEADERS)
+
+    # 2. Hauptübersicht
+    ws_main = wb.create_sheet(SHEET_HAUPT)
     _write_header(ws_main, MAIN_HEADERS)
     _auto_width(ws_main, MAIN_HEADERS)
 
-    ws_review = wb.create_sheet("Review Queue")
+    # 3. Review Queue
+    ws_review = wb.create_sheet(SHEET_REVIEW)
     _write_header(ws_review, REVIEW_HEADERS)
     _auto_width(ws_review, REVIEW_HEADERS)
 
-    ws_archiv = wb.create_sheet("Archiv")
-    _write_header(ws_archiv, ARCHIV_HEADERS)
-    _auto_width(ws_archiv, ARCHIV_HEADERS)
-
-    ws_watch = wb.create_sheet("Watchlist-Config")
+    # 4. Watchlist-Config
+    ws_watch = wb.create_sheet(SHEET_WATCHLIST)
     _write_header(ws_watch, WATCHLIST_HEADERS)
     _auto_width(ws_watch, WATCHLIST_HEADERS)
-    # Beispielzeile damit User das Format sieht
     ws_watch.append(["Linkin Park Wien 09.06.2026", 89.90,
                      "https://www.oeticket.com/event/linkin-park-wien-12345", "Beispiel"])
+
+    # 5. Alte Veranstaltungen (letztes Sheet)
+    ws_archiv = wb.create_sheet(SHEET_ARCHIV)
+    _write_header(ws_archiv, ARCHIV_HEADERS)
+    _auto_width(ws_archiv, ARCHIV_HEADERS)
 
     wb.save(path)
     return wb
@@ -286,8 +354,8 @@ def upsert_events(events: list[dict], excel_path: Path) -> dict:
     Rückgabe: {inserted, updated, review_added}
     """
     wb = _load_or_create(excel_path)
-    ws_main = wb["Hauptübersicht"]
-    ws_review = wb["Review Queue"]
+    ws_main   = wb[SHEET_HAUPT]
+    ws_review = wb[SHEET_REVIEW]
 
     # Anzeigen-ID ist in Spalte 3 (MAIN_FIELDS[2] = "willhaben_id")
     main_index = _build_index(ws_main, id_field_pos=3)
@@ -330,54 +398,53 @@ def upsert_events(events: list[dict], excel_path: Path) -> dict:
     return stats
 
 
-def archive_expired(excel_path: Path, cutoff_date: datetime.date | None = None) -> int:
+def write_dashboard(agg_rows: list[dict], excel_path: Path) -> None:
     """
-    Verschiebt Events mit Event-Datum < cutoff_date von Hauptübersicht → Archiv.
-    Gibt Anzahl archivierter Einträge zurück.
+    Schreibt (oder überschreibt) das Dashboard-Sheet mit aggregierten Daten.
+    agg_rows ist eine Liste von Dicts (aus aggregate().to_dict('records')).
     """
-    if cutoff_date is None:
-        cutoff_date = datetime.date.today()
-
     wb = _load_or_create(excel_path)
-    ws_main = wb["Hauptübersicht"]
-    ws_archiv = wb["Archiv"]
 
-    datum_col = MAIN_FIELDS.index("event_datum") + 1
+    if SHEET_DASHBOARD in wb.sheetnames:
+        del wb[SHEET_DASHBOARD]
+    ws = wb.create_sheet(SHEET_DASHBOARD, 0)
 
-    rows_to_archive: list[int] = []
-    for row_num in range(2, ws_main.max_row + 1):
-        val = ws_main.cell(row=row_num, column=datum_col).value
-        if not val:
-            continue
-        try:
-            if isinstance(val, str):
-                event_date = datetime.date.fromisoformat(val[:10])
-            elif isinstance(val, datetime.datetime):
-                event_date = val.date()
-            elif isinstance(val, datetime.date):
-                event_date = val
-            else:
-                continue
-            if event_date < cutoff_date:
-                rows_to_archive.append(row_num)
-        except ValueError:
-            continue
+    _write_header(ws, DASHBOARD_HEADERS)
+    _auto_width(ws, DASHBOARD_HEADERS)
 
-    archived = 0
-    for row_num in sorted(rows_to_archive, reverse=True):
-        row_data = [ws_main.cell(row=row_num, column=c).value
-                    for c in range(1, len(MAIN_FIELDS) + 1)]
-        ws_archiv.append(row_data)
-        for col_idx in range(1, len(MAIN_FIELDS) + 1):
-            ws_main.cell(row=row_num, column=col_idx).fill = PatternFill(
-                "solid", fgColor=COLOR_ARCHIV
-            )
-        archived += 1
+    for row in agg_rows:
+        vals = []
+        for field in DASHBOARD_FIELDS:
+            val = row.get(field)
+            if isinstance(val, float) and math.isnan(val):
+                val = ""
+            elif val is None:
+                val = ""
+            elif isinstance(val, float):
+                val = round(val, 2)
+            vals.append(val)
+        ws.append(vals)
 
-    if archived:
-        wb.save(excel_path)
+    wb.save(excel_path)
 
-    return archived
+
+def finalisiere_lauf(events: list[dict], excel_path: Path) -> dict:
+    """
+    Vollständiger Pipeline-Schritt: upsert → archivierung → Dashboard-Refresh.
+    Rückgabe: {inserted, updated, review_added, archived}.
+    """
+    from export.archivierung import archive_expired as _archive
+    from app.backend.dashboard_aggregator import load_excel, aggregate
+
+    excel_stats = upsert_events(events, excel_path)
+    archived = _archive(excel_path)
+
+    df = load_excel(excel_path)
+    agg = aggregate(df)
+    agg_rows = agg.to_dict("records") if not agg.empty else []
+    write_dashboard(agg_rows, excel_path)
+
+    return {**excel_stats, "archived": archived}
 
 
 def update_ovp(
@@ -392,7 +459,7 @@ def update_ovp(
     Gibt True zurück wenn die ID gefunden wurde.
     """
     wb = _load_or_create(excel_path)
-    ws = wb["Hauptübersicht"]
+    ws = wb[SHEET_HAUPT]
     index = _build_index(ws, id_field_pos=3)
 
     if willhaben_id not in index:

@@ -1,153 +1,216 @@
 """
 dashboard_aggregator.py
 
-Aggregates Excel 'Hauptübersicht' sheet data into a market analysis summary
-using pandas. Groups by (event_name, event_datum, kategorie) and
-separates Privat vs Haendler sellers.
+Reads the 34-column 'Hauptübersicht' sheet and produces a grouped market
+analysis DataFrame. Groups by (event_name_normalized, event_datum, kategorie).
 """
 import math
+import re
 from pathlib import Path
 
 import pandas as pd
 
 
-# Maps Excel display-header names → aggregator snake_case column names.
-# The Excel sheet uses German display names (written by excel_writer.py);
-# the aggregator works with snake_case keys.  load_excel() applies this
-# rename immediately after pd.read_excel so the rest of the module never
-# has to deal with German column names.
 _EXCEL_COLUMN_MAP: dict[str, str] = {
-    "Event-Name":             "event_name",
-    "Event-Datum":            "event_datum",
-    "Venue":                  "venue",
-    "Stadt":                  "stadt",
-    "Kategorie":              "kategorie",
-    "Verkäufertyp":           "anbieter_typ",
-    "Anzahl Karten":          "anzahl_karten",
-    "Angebotspreis gesamt":   "angebotspreis_gesamt",
-    "Angebotspreis pro Karte": "preis_pro_karte",
-    "Originalpreis pro Karte": "originalpreis_pro_karte",
+    "Event-Name":               "event_name",
+    "Event-Datum":              "event_datum",
+    "Venue":                    "venue",
+    "Stadt":                    "stadt",
+    "Kategorie":                "kategorie",
+    "Verkäufertyp":             "anbieter_typ",
+    "Verkäufername":            "verkäufername",
+    "Anzahl Karten":            "anzahl_karten",
+    "Angebotspreis gesamt":     "angebotspreis_gesamt",
+    "Angebotspreis pro Karte":  "preis_pro_karte",
+    "Originalpreis pro Karte":  "originalpreis_pro_karte",
+    "Confidence":               "confidence",
+    # Sprint 1
+    "Venue (normiert)":         "venue_normiert",
+    "Venue-Kapazität":          "venue_kapazität",
+    "Venue-Typ":                "venue_typ",
+    "Vertriebsklasse":          "vertrieb_klasse",
+    "Eingestellt am":           "eingestellt_am",
 }
 
-# Column name used to identify seller type in the Excel sheet
 _ANBIETER_TYP_COL = "anbieter_typ"
-_PREIS_COL = "preis_pro_karte"
-_GESAMT_COL = "angebotspreis_gesamt"
-_ANZAHL_COL = "anzahl_karten"
-_OVP_COL = "originalpreis_pro_karte"
+_PREIS_COL        = "preis_pro_karte"
+_GESAMT_COL       = "angebotspreis_gesamt"
+_ANZAHL_COL       = "anzahl_karten"
+_OVP_COL          = "originalpreis_pro_karte"
+_CONFIDENCE_COL   = "confidence"
+_VERKAEUFER_COL   = "verkäufername"
+_VERTRIEB_COL     = "vertrieb_klasse"
+
+_OUTPUT_COLUMNS: list[str] = [
+    "Event", "Kategorie", "Datum", "Venue", "Stadt",
+    "Venue_normiert", "Venue_typ", "Venue_kapazität",
+    "Gesamt_Anzahl",
+    "Privat_Anzahl", "Privat_Min", "Privat_Avg", "Privat_Max",
+    "Haendler_Anzahl", "Haendler_Min", "Haendler_Avg", "Haendler_Max",
+    "OVP",
+    "Marge_Haendler_EUR", "Marge_Privat_EUR",
+    "Marge_Haendler_Pct", "Marge_Privat_Pct",
+    "Top_Verkaeufer", "Top_Verkaeufer_Anzahl",
+    "Confidence_Modal", "Vertrieb_Gewerblich_Anteil_Pct",
+]
+
+
+def _normalize_event_name(name) -> str:
+    if not name or not str(name).strip():
+        return ""
+    return re.sub(r"\s+", " ", str(name).strip()).lower()
+
+
+def _normalize_prices(df: pd.DataFrame) -> pd.DataFrame:
+    """Fills preis_pro_karte from angebotspreis_gesamt / anzahl_karten where missing."""
+    df = df.copy()
+    if _PREIS_COL not in df.columns:
+        df[_PREIS_COL] = float("nan")
+    if _GESAMT_COL in df.columns and _ANZAHL_COL in df.columns:
+        mask = (
+            df[_PREIS_COL].isna()
+            & df[_GESAMT_COL].notna()
+            & df[_ANZAHL_COL].notna()
+            & (df[_ANZAHL_COL] > 0)
+        )
+        df.loc[mask, _PREIS_COL] = (
+            df.loc[mask, _GESAMT_COL] / df.loc[mask, _ANZAHL_COL]
+        )
+    return df
+
+
+def _stats(sub: pd.DataFrame, prefix: str) -> dict:
+    prices = sub[_PREIS_COL].dropna() if _PREIS_COL in sub.columns else pd.Series(dtype=float)
+    if prices.empty:
+        return {
+            f"{prefix}_Anzahl": 0,
+            f"{prefix}_Min":    float("nan"),
+            f"{prefix}_Avg":    float("nan"),
+            f"{prefix}_Max":    float("nan"),
+        }
+    return {
+        f"{prefix}_Anzahl": len(prices),
+        f"{prefix}_Min":    round(float(prices.min()), 2),
+        f"{prefix}_Avg":    round(float(prices.mean()), 2),
+        f"{prefix}_Max":    round(float(prices.max()), 2),
+    }
+
+
+def _top_verkaeufer(grp: pd.DataFrame) -> tuple:
+    if _VERKAEUFER_COL not in grp.columns:
+        return None, 0
+    counts = grp[_VERKAEUFER_COL].dropna().value_counts()
+    if counts.empty:
+        return None, 0
+    return str(counts.index[0]), int(counts.iloc[0])
+
+
+def _confidence_modal(grp: pd.DataFrame) -> str | None:
+    if _CONFIDENCE_COL not in grp.columns:
+        return None
+    vals = grp[_CONFIDENCE_COL].dropna()
+    if vals.empty:
+        return None
+    mode = vals.mode()
+    return str(mode.iloc[0]) if len(mode) > 0 else None
 
 
 def load_excel(path: Path) -> pd.DataFrame:
-    """Reads 'Hauptübersicht' sheet from Excel. Returns empty DataFrame if file missing."""
+    """Reads 'Hauptübersicht', renames columns, normalizes preis_pro_karte."""
     try:
         df = pd.read_excel(path, sheet_name="Hauptübersicht", engine="openpyxl")
-        return df.rename(columns=_EXCEL_COLUMN_MAP)
+        df = df.rename(columns=_EXCEL_COLUMN_MAP)
+        return _normalize_prices(df)
     except (FileNotFoundError, Exception):
         return pd.DataFrame()
 
 
 def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Groups by (event_name, event_datum, kategorie).
-    Separates 'Privat' vs 'Händler' sellers by anbieter_typ column.
-    Computes per-group: count, min/mean/max of preis_pro_karte.
-    Attaches median originalpreis_pro_karte as OVP.
-    Computes Marge % = (OVP - mean_preis) / OVP * 100 for each seller type.
-    Returns DataFrame with the dashboard columns.
+    Groups by (event_name_normalized, event_datum, kategorie).
+    Computes per-group: Privat/Händler price stats, OVP, margins,
+    top seller, confidence modal, venue metadata, commercial share.
     """
     if df.empty:
-        return pd.DataFrame(columns=[
-            "Event", "Kategorie", "Datum", "Venue", "Stadt",
-            "Privat_Anzahl", "Privat_Min", "Privat_Avg", "Privat_Max",
-            "Haendler_Anzahl", "Haendler_Min", "Haendler_Avg", "Haendler_Max",
-            "OVP", "Marge_Haendler_Pct", "Marge_Privat_Pct",
-        ])
+        return pd.DataFrame(columns=_OUTPUT_COLUMNS)
+
+    df = _normalize_prices(df)
+
+    for col in [_ANBIETER_TYP_COL, _OVP_COL, _CONFIDENCE_COL,
+                _VERKAEUFER_COL, _VERTRIEB_COL]:
+        if col not in df.columns:
+            df = df.copy()
+            df[col] = None
 
     df = df.copy()
+    df[_ANBIETER_TYP_COL] = df[_ANBIETER_TYP_COL].fillna("Privat")
+    df["_event_key"] = df["event_name"].apply(_normalize_event_name)
 
-    # Compute preis_pro_karte if not already present
-    if _PREIS_COL not in df.columns:
-        if _GESAMT_COL in df.columns and _ANZAHL_COL in df.columns:
-            df[_PREIS_COL] = df[_GESAMT_COL] / df[_ANZAHL_COL]
-        else:
-            df[_PREIS_COL] = float("nan")
-
-    # Normalise anbieter_typ: None / NaN → "Privat"
-    if _ANBIETER_TYP_COL not in df.columns:
-        df[_ANBIETER_TYP_COL] = "Privat"
-    else:
-        df[_ANBIETER_TYP_COL] = df[_ANBIETER_TYP_COL].fillna("Privat")
-
-    group_keys = ["event_name", "event_datum", "kategorie"]
-    # Also capture venue/stadt for display — take first value per group
-    meta_keys = ["venue", "stadt"]
-
-    # Make sure meta columns exist
-    for col in meta_keys + group_keys:
+    group_keys = ["_event_key", "event_datum", "kategorie"]
+    for col in group_keys + ["event_name", "venue", "stadt"]:
         if col not in df.columns:
             df[col] = None
 
-    # --- helper: compute stats for one seller-type subset ---
-    def _stats(sub: pd.DataFrame, prefix: str) -> dict:
-        prices = sub[_PREIS_COL].dropna()
-        if len(prices) == 0:
-            return {
-                f"{prefix}_Anzahl": 0,
-                f"{prefix}_Min": float("nan"),
-                f"{prefix}_Avg": float("nan"),
-                f"{prefix}_Max": float("nan"),
-            }
-        return {
-            f"{prefix}_Anzahl": len(prices),
-            f"{prefix}_Min": prices.min(),
-            f"{prefix}_Avg": prices.mean(),
-            f"{prefix}_Max": prices.max(),
-        }
-
     rows = []
     for keys, grp in df.groupby(group_keys, dropna=False):
-        event_name, event_datum, kategorie = keys
-
-        privat = grp[grp[_ANBIETER_TYP_COL] == "Privat"]
+        privat   = grp[grp[_ANBIETER_TYP_COL] == "Privat"]
         haendler = grp[grp[_ANBIETER_TYP_COL] == "Händler"]
 
-        privat_stats = _stats(privat, "Privat")
+        privat_stats   = _stats(privat,   "Privat")
         haendler_stats = _stats(haendler, "Haendler")
 
-        # OVP: median of originalpreis_pro_karte across entire group
-        if _OVP_COL in grp.columns:
-            ovp_vals = grp[_OVP_COL].dropna()
-            ovp = ovp_vals.median() if len(ovp_vals) > 0 else float("nan")
-        else:
-            ovp = float("nan")
+        ovp_vals = grp[_OVP_COL].dropna()
+        ovp = float(ovp_vals.median()) if not ovp_vals.empty else float("nan")
 
-        # Marge %: (OVP - mean_preis) / OVP * 100
-        def _marge(avg: float) -> float:
+        def _marge_pct(avg: float) -> float:
             if math.isnan(ovp) or math.isnan(avg) or ovp == 0:
                 return float("nan")
             return (ovp - avg) / ovp * 100
 
-        row = {
-            "Event": event_name,
-            "Kategorie": kategorie,
-            "Datum": event_datum,
-            "Venue": grp["venue"].iloc[0] if "venue" in grp.columns else None,
-            "Stadt": grp["stadt"].iloc[0] if "stadt" in grp.columns else None,
+        def _marge_eur(avg: float) -> float:
+            if math.isnan(ovp) or math.isnan(avg):
+                return float("nan")
+            return round(avg - ovp, 2)
+
+        def _first(col: str):
+            return grp[col].iloc[0] if col in grp.columns and not grp.empty else None
+
+        top_name, top_count = _top_verkaeufer(grp)
+        conf_modal = _confidence_modal(grp)
+
+        gewerblich_n = int((grp[_VERTRIEB_COL] == "gewerblich").sum()) \
+            if _VERTRIEB_COL in grp.columns else 0
+        gewerblich_anteil = round(gewerblich_n / len(grp) * 100, 1) if len(grp) > 0 else float("nan")
+
+        h_avg = haendler_stats["Haendler_Avg"]
+        p_avg = privat_stats["Privat_Avg"]
+
+        _, event_datum, kategorie = keys
+        rows.append({
+            "Event":                           _first("event_name"),
+            "Kategorie":                       kategorie,
+            "Datum":                           event_datum,
+            "Venue":                           _first("venue"),
+            "Stadt":                           _first("stadt"),
+            "Venue_normiert":                  _first("venue_normiert"),
+            "Venue_typ":                       _first("venue_typ"),
+            "Venue_kapazität":                 _first("venue_kapazität"),
+            "Gesamt_Anzahl":                   len(grp),
             **privat_stats,
             **haendler_stats,
-            "OVP": ovp,
-            "Marge_Haendler_Pct": _marge(haendler_stats["Haendler_Avg"]),
-            "Marge_Privat_Pct": _marge(privat_stats["Privat_Avg"]),
-        }
-        rows.append(row)
+            "OVP":                             ovp,
+            "Marge_Haendler_EUR":              _marge_eur(h_avg),
+            "Marge_Privat_EUR":                _marge_eur(p_avg),
+            "Marge_Haendler_Pct":              _marge_pct(h_avg),
+            "Marge_Privat_Pct":                _marge_pct(p_avg),
+            "Top_Verkaeufer":                  top_name,
+            "Top_Verkaeufer_Anzahl":           top_count,
+            "Confidence_Modal":                conf_modal,
+            "Vertrieb_Gewerblich_Anteil_Pct":  gewerblich_anteil,
+        })
 
     if not rows:
-        return pd.DataFrame(columns=[
-            "Event", "Kategorie", "Datum", "Venue", "Stadt",
-            "Privat_Anzahl", "Privat_Min", "Privat_Avg", "Privat_Max",
-            "Haendler_Anzahl", "Haendler_Min", "Haendler_Avg", "Haendler_Max",
-            "OVP", "Marge_Haendler_Pct", "Marge_Privat_Pct",
-        ])
+        return pd.DataFrame(columns=_OUTPUT_COLUMNS)
 
     return pd.DataFrame(rows)
 
