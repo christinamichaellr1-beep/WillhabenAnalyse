@@ -62,9 +62,10 @@ def merge_scrape_mit_historie(
 
 
 def update_bestehende_zeile(existing: dict, updates: dict) -> dict:
-    """Applies partial updates to an existing row, never overwriting MANUELLE_SPALTEN.
+    """Applies partial updates to an existing row, preserving MANUELLE_SPALTEN.
 
-    Use for non-scrape updates (e.g. verification results, computed fields).
+    MANUELLE_SPALTEN are ALWAYS protected, regardless of update source.
+    Use for any non-scrape updates (e.g. verification results, computed fields).
     Returns new dict — does not mutate inputs.
     """
     result = existing.copy()
