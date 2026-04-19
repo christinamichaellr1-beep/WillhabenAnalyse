@@ -147,6 +147,7 @@ DASHBOARD_COLUMNS: list[tuple[str, str]] = [
     ("Haendler_Avg",                    "Händler Avg €/K"),
     ("Haendler_Max",                    "Händler Max €/K"),
     ("OVP",                             "OVP €/K"),
+    ("OVP_Status",                      "OVP Status"),
     ("Marge_Haendler_EUR",              "Händler Marge €"),
     ("Marge_Privat_EUR",                "Privat Marge €"),
     ("Marge_Haendler_Pct",              "Händler Marge %"),

@@ -43,6 +43,8 @@ _EXCEL_COLUMN_MAP: dict[str, str] = {
     "Verif. Status":            "verif_status",
     "Verif. Quellen":           "verif_quellen",
     "Verif. Score":             "verif_score",
+    # Manuelle OVP-Pflege (Phase 4)
+    "OVP manuell €/K":          "ovp_manuell",
 }
 
 _ANBIETER_TYP_COL = "anbieter_typ"
@@ -50,6 +52,7 @@ _PREIS_COL        = "preis_pro_karte"
 _GESAMT_COL       = "angebotspreis_gesamt"
 _ANZAHL_COL       = "anzahl_karten"
 _OVP_COL          = "originalpreis_pro_karte"
+_OVP_MANUELL_COL  = "ovp_manuell"
 _CONFIDENCE_COL   = "confidence"
 _VERKAEUFER_COL   = "verkäufername"
 _VERTRIEB_COL     = "vertrieb_klasse"
@@ -60,7 +63,7 @@ _OUTPUT_COLUMNS: list[str] = [
     "Gesamt_Anzahl",
     "Privat_Anzahl", "Privat_Min", "Privat_Avg", "Privat_Max",
     "Haendler_Anzahl", "Haendler_Min", "Haendler_Avg", "Haendler_Max",
-    "OVP",
+    "OVP", "OVP_Status",
     "Marge_Haendler_EUR", "Marge_Privat_EUR",
     "Marge_Haendler_Pct", "Marge_Privat_Pct",
     "Top_Verkaeufer", "Top_Verkaeufer_Anzahl",
@@ -81,6 +84,32 @@ _PREIS_BEWEGUNG_THRESHOLD_PCT = 3.0
 _UNGUELTIGE_EVENT_NAMEN: frozenset[str] = frozenset({
     "unbekannt", "none", "", "n/a", "k.a.", "k. a.", "unbekanntes event",
 })
+
+
+def _ovp_final_fuer_gruppe(grp: "pd.DataFrame") -> "tuple[float, str]":
+    """Computes final OVP for a group: prefers manual OVP over extracted.
+
+    Returns (ovp_final as float or nan, ovp_status_label).
+    """
+    from export.ovp_logic import berechne_finaler_ovp as _berechne
+
+    ext_vals = grp[_OVP_COL].dropna() if _OVP_COL in grp.columns else pd.Series(dtype=float)
+    man_vals = grp[_OVP_MANUELL_COL].dropna() if _OVP_MANUELL_COL in grp.columns else pd.Series(dtype=float)
+
+    ovp_ext = float(ext_vals.median()) if not ext_vals.empty else None
+    ovp_man = float(man_vals.median()) if not man_vals.empty else None
+
+    ovp_final, quelle = _berechne(ovp_ext, ovp_man)
+
+    if ovp_final is None:
+        label = "fehlt ❌"
+        return float("nan"), label
+    elif quelle == "manuell" or quelle == "beide_übereinstimmend":
+        label = "manuell gepflegt ✓"
+    else:
+        label = "nur extrahiert ⚠"
+
+    return float(ovp_final), label
 
 
 def _safe_mean(series: "pd.Series") -> float | None:
@@ -247,8 +276,7 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         privat_stats   = _stats(privat,   "Privat")
         haendler_stats = _stats(haendler, "Haendler")
 
-        ovp_vals = grp[_OVP_COL].dropna()
-        ovp = float(ovp_vals.median()) if not ovp_vals.empty else float("nan")
+        ovp, ovp_status = _ovp_final_fuer_gruppe(grp)
 
         def _marge_pct(avg: float) -> float:
             if math.isnan(ovp) or math.isnan(avg) or ovp == 0:
@@ -330,6 +358,7 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
             **privat_stats,
             **haendler_stats,
             "OVP":                             ovp,
+            "OVP_Status":                      ovp_status,
             "Marge_Haendler_EUR":              _marge_eur(h_avg),
             "Marge_Privat_EUR":                _marge_eur(p_avg),
             "Marge_Haendler_Pct":              _marge_pct(h_avg),
